@@ -298,3 +298,30 @@ def test_build_report_writes_markdown_and_chart(tmp_path: Path, eval_repo: Path)
     # the baseline table must be recomputed on the shared task id, not the 30-task aggregate
     regex_row = next(row for row in result["baselines"] if row["name"] == "codex")
     assert regex_row["shared"]["n"] == 1
+
+
+# ------------------------------------------------------- verifier health triage
+
+
+def test_verifier_setup_failure_is_not_an_agent_failure():
+    """A reward of 0 written after the verifier's own install failed says nothing."""
+    from rsih.bench.runner import verifier_setup_failure
+
+    flaky = (
+        "Err:1 http://deb.debian.org/debian bookworm InRelease\n"
+        "  502  Bad Gateway [IP: 146.75.114.132 80]\n"
+        "E: Unable to locate package curl\n"
+        "/tests/test.sh: line 8: curl: command not found\n"
+        "/tests/test.sh: line 19: uvx: command not found\n"
+    )
+    assert verifier_setup_failure(flaky)
+
+    real = (
+        "FAILED ../tests/test_outputs.py::test_speedup[5] - AssertionError: 0.000015 s\n"
+        "========================= 5 failed, 22 passed in 0.66s =========================\n"
+    )
+    assert verifier_setup_failure(real) is None
+
+    # the missing env file alone is a warning: uv still ran the suite
+    mixed = "/tests/test.sh: line 9: /root/.local/bin/env: No such file or directory\n1 failed in 0.07s\n"
+    assert verifier_setup_failure(mixed) is None

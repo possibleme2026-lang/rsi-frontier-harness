@@ -197,10 +197,12 @@ class DockerSandbox:
             text = head
         return text, exit_code, cwd
 
-    def exec_script(self, script: str, *, timeout_s: float = 120.0) -> ExecResult:
+    def exec_script(
+        self, script: str, *, timeout_s: float = 120.0, workdir: str | None = None
+    ) -> ExecResult:
         if self._has_timeout is None:
             raise SandboxError("sandbox not started")
-        return self._exec_raw(script, timeout_s=timeout_s)
+        return self._exec_raw(script, timeout_s=timeout_s, workdir=workdir)
 
     # ------------------------------------------------------------------ files
 

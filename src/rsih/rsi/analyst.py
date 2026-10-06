@@ -42,6 +42,32 @@ and must not appear. If the failures have no shared mechanism, return "rules": [
 Allowed mutation names:
 """
 
+#: Used when the harness already solves nearly everything it is given.  At that point
+#: the interesting question is no longer correctness but spend, and spend is measured
+#: with far less noise than a pass rate over a handful of tasks - which is what makes
+#: this the dimension a small evolve set can actually resolve.
+COST_SYSTEM = """You are the cost analyst for a coding agent that already solves almost \
+every task it is given.  Its pass rate is not the problem; its spend is.
+
+You will receive the per-task cost, turns, and token split of the current harness, plus \
+the note that this measurement is dominated by what the model *writes*, not by how big \
+the model is.
+
+Return JSON only, with this shape:
+{
+  "pattern": "one sentence naming the largest avoidable cost in this harness",
+  "rules": ["at most 2 imperative rules that make the agent spend fewer tokens per task, each under 200 characters"],
+  "mutations": ["up to 2 names from the allowed list"]
+}
+
+The rules go into the agent's own instructions.  They must reduce work, not accuracy: a \
+rule that tells the agent to stop verifying, to guess, or to skip reading is wrong.  \
+Good rules make the agent act sooner and observe less noise.  Facts tied to one task are \
+contamination and must not appear.
+
+Allowed mutation names:
+"""
+
 
 @dataclass
 class Analysis:
@@ -81,7 +107,30 @@ def analyse(
     tasks_by_id: dict,
     runs_dir: Path,
     max_tasks: int = 5,
+    cost_context: str | None = None,
 ) -> Analysis:
+    """Diagnose the incumbent, with its spend table always in view.
+
+    ``cost_context`` is not a mode switch any more.  The analyst sees the failures, the
+    spend, and an explicit statement of what this evolve set can resolve, then chooses
+    whether to spend its one hypothesis on correctness or on cost.  A harness that has
+    stopped failing and a harness that cannot resolve its remaining failure both need
+    the same next question asked of them.
+    """
+    if cost_context is not None and not failures:
+        try:
+            response = client.complete(
+                [
+                    {"role": "system", "content": COST_SYSTEM + "\n".join(sorted(MUTATIONS))},
+                    {"role": "user", "content": cost_context + "\n\nReturn the JSON object."},
+                ],
+                max_tokens=1200,
+                label="analyst-cost",
+            )
+        except LLMError as exc:
+            return Analysis(error=str(exc))
+        return _parse(response.content)
+
     if not failures:
         return Analysis(pattern="no failures to analyse")
 
@@ -100,6 +149,15 @@ def analyse(
         + "\n\n".join(sections)
         + "\n\nDiagnose and return the JSON object."
     )
+    if cost_context is not None:
+        user += (
+            "\n\n### SPEND OF THE SAME HARNESS\n"
+            f"{cost_context}\n\n"
+            "You may instead propose an edit whose only claimed effect is lower spend. "
+            "A child that holds the pass rate and cuts total spend is accepted; a child "
+            "that trades the pass rate away is not. Weigh both options and return the "
+            "single hypothesis you would test next."
+        )
     try:
         response = client.complete(
             [
@@ -112,7 +170,11 @@ def analyse(
     except LLMError as exc:
         return Analysis(error=str(exc))
 
-    text = response.content.strip()
+    return _parse(response.content)
+
+
+def _parse(text: str) -> Analysis:
+    text = text.strip()
     start = text.find("{")
     end = text.rfind("}")
     if start == -1 or end == -1:

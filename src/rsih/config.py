@@ -44,12 +44,17 @@ class Settings:
     workspace: Path
     eval_repo: Path
     tb2_repo: Path
+    deepswe_repo: Path
     runs_dir: Path
     base_url: str
     api_key: str | None
     model: str
     request_timeout_s: float
     max_retries: int
+    #: DeepSWE allows three hours per task.  A harness that is being compared on cost
+    #: per pass cannot spend three hours on nine tasks, so the wall-clock envelope is
+    #: capped here and the cap is recorded in every affected trial.
+    agent_timeout_cap_s: float
 
     @property
     def has_key(self) -> bool:
@@ -62,10 +67,12 @@ def settings() -> Settings:
         workspace=workspace,
         eval_repo=Path(_get("RSIH_EVAL_REPO", str(workspace / "_ref-frontier-eval"))),
         tb2_repo=Path(_get("RSIH_TB2_REPO", str(workspace / "_ref-tb2"))),
+        deepswe_repo=Path(_get("RSIH_DEEPSWE_REPO", str(workspace / "_ref-deep-swe"))),
         runs_dir=Path(_get("RSIH_RUNS_DIR", str(PROJECT_ROOT / "runs"))),
         base_url=(_get("TIERFLOW_BASE_URL", "https://tierflow.cn/v1") or "").rstrip("/"),
         api_key=_get("TIERFLOW_API_KEY"),
         model=_get("RSIH_MODEL", "DeepSeek-V4.1-Flash") or "DeepSeek-V4.1-Flash",
         request_timeout_s=float(_get("RSIH_REQUEST_TIMEOUT", "600") or 600),
         max_retries=int(_get("RSIH_MAX_RETRIES", "4") or 4),
+        agent_timeout_cap_s=float(_get("RSIH_AGENT_TIMEOUT_CAP", "2400") or 2400),
     )

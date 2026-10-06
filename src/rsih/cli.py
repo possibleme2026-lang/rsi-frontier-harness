@@ -25,9 +25,11 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     print(f"  workspace         : {cfg.workspace}")
     print(f"  eval repo         : {cfg.eval_repo} ({'ok' if cfg.eval_repo.is_dir() else 'MISSING'})")
     print(f"  terminal-bench-2  : {cfg.tb2_repo} ({'ok' if cfg.tb2_repo.is_dir() else 'MISSING'})")
+    print(f"  deep-swe corpus   : {cfg.deepswe_repo} ({'ok' if cfg.deepswe_repo.is_dir() else 'MISSING'})")
     print(f"  runs dir          : {cfg.runs_dir}")
     print(f"  base url          : {cfg.base_url}")
     print(f"  model             : {cfg.model}")
+    print(f"  agent time cap    : {cfg.agent_timeout_cap_s:.0f}s (declared budgets above it are capped per trial)")
     key = cfg.api_key
     print(f"  api key           : {'present (' + key[:6] + '...' + key[-4:] + ')' if key else 'MISSING'}")
     ready, blocked = available_tasks(cfg)
@@ -110,6 +112,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         settings=cfg,
         network=args.network,
         keep_container=args.keep_container,
+        concurrency=args.concurrency,
         on_result=report,
     )
     passed = sum(1 for r in results if r.status == "success")
@@ -213,6 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--tasks", default=None, help="comma-separated task ids")
     run.add_argument("--genome", default="gen0")
     run.add_argument("--network", default="bridge")
+    run.add_argument("--concurrency", type=int, default=1)
     run.add_argument("--keep-container", action="store_true")
     run.set_defaults(func=_cmd_run)
 

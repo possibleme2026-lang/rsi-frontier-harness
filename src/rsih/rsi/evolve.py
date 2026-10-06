@@ -98,6 +98,7 @@ class Decision:
     child_wins: list[str] = field(default_factory=list)
     incumbent_wins: list[str] = field(default_factory=list)
     cost_ratio: float | None = None
+    cost_t: float | None = None
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -130,17 +131,48 @@ def paired_decision(
     cost_ratio = None
     if incumbent_cost and child_cost is not None and incumbent_cost > 0:
         cost_ratio = child_cost / incumbent_cost
+    cost_t = paired_cost_t(incumbent, child)
     if (
         cost_ratio is not None
         and cost_ratio <= cost_margin
+        and cost_t is not None
+        and cost_t <= -z
         and diff >= -floor
         and len(child.valid) == len(incumbent.valid)
         and child.passed >= incumbent.passed - 0
     ):
-        return Decision(True, "accepted_cost", diff, floor, len(b) + len(c), n, b, c, cost_ratio)
+        decision = Decision(True, "accepted_cost", diff, floor, len(b) + len(c), n, b, c, cost_ratio)
+        decision.cost_t = cost_t
+        return decision
 
     reason = "rejected_worse" if diff < 0 else "rejected_within_noise"
-    return Decision(False, reason, diff, floor, len(b) + len(c), n, b, c, cost_ratio)
+    decision = Decision(False, reason, diff, floor, len(b) + len(c), n, b, c, cost_ratio)
+    decision.cost_t = cost_t
+    return decision
+
+
+def paired_cost_t(incumbent: Outcome, child: Outcome) -> float | None:
+    """Paired t-statistic of the per-task spend difference, child minus incumbent.
+
+    The pass-rate gate divides a difference by a floor; the cost gate as first written
+    divided nothing, so a total that one expensive task happened to move could carry a
+    verdict.  This is the same discipline applied to money: the difference in *total*
+    spend is the sum of per-task differences, so its standard error is the standard
+    error of those differences, and a saving has to exceed ``z`` of them.
+    """
+    left = {t.task_id: t for t in incumbent.valid if t.cost_usd is not None}
+    right = {t.task_id: t for t in child.valid if t.cost_usd is not None}
+    shared = sorted(set(left) & set(right))
+    if len(shared) < 2:
+        return None
+    deltas = [right[t].cost_usd - left[t].cost_usd for t in shared]
+    n = len(deltas)
+    mean = sum(deltas) / n
+    variance = sum((value - mean) ** 2 for value in deltas) / (n - 1)
+    se = (variance**0.5) / (n**0.5)
+    if se == 0:
+        return float("-inf") if mean < 0 else float("inf")
+    return mean / se
 
 
 # ---------------------------------------------------------------------- splits
@@ -176,6 +208,9 @@ class EvolutionConfig:
     concurrency: int = 3
     seed: int = 7
     analyst_tasks: int = 5
+    #: pass rate at or above which the analyst is asked about spend instead of
+    #: correctness, because a pass-rate difference can no longer be measured
+    cost_mode_above: float = 0.85
 
 
 class EvolutionLoop:
@@ -234,6 +269,50 @@ class EvolutionLoop:
         self._log({"event": "evaluation", **outcome.summary()})
         return outcome
 
+    def _cost_context(self, incumbent: Outcome) -> str | None:
+        """Give the analyst the spend table, always.
+
+        An earlier version of this loop only showed the analyst its spend once the
+        incumbent passed *everything*.  That is backwards: on an evolve set small
+        enough to iterate on, the significance gate cannot accept a pass-rate
+        improvement at all - `(b - c) > z·sqrt(b + c)` needs five cells flipped in one
+        direction and none broken - so spend is the only live dimension long before the
+        pass rate saturates.  The analyst is told what is resolvable and decides for
+        itself whether to spend its hypothesis on correctness or on cost.
+        """
+        valid = incumbent.valid
+        if not valid:
+            return None
+        pass_rate = incumbent.passed / len(valid)
+        rows = [
+            f"{r.task_id}: status={r.status} turns={r.turns} "
+            f"cost=${r.cost_usd:.5f} "
+            f"prompt_tokens={r.usage.get('prompt_tokens')} "
+            f"cached_tokens={r.usage.get('cached_tokens')} "
+            f"completion_tokens={r.usage.get('completion_tokens')}"
+            if r.cost_usd is not None
+            else f"{r.task_id}: status={r.status} turns={r.turns} cost=unknown"
+            for r in incumbent.results
+        ]
+        saturated = pass_rate >= self.config.cost_mode_above
+        note = (
+            "No correctness hypothesis can be tested against this task set any more: a "
+            "child can only differ by breaking something."
+            if saturated
+            else (
+                f"On this {len(valid)}-cell set a pass-rate change is only accepted if "
+                f"b - c > {self.config.z:g}·sqrt(b + c) (five cells fixed and none broken), "
+                "so a correctness edit is unlikely to be measurable here. An edit that "
+                "holds the pass rate and cuts spend by "
+                f"{1 - self.config.cost_margin:.0%} or more is accepted."
+            )
+        )
+        return (
+            f"Current harness passes {incumbent.passed}/{len(valid)} valid tasks "
+            f"({pass_rate:.0%}) and spent ${incumbent.cost() or 0:.4f} in total.\n"
+            f"{note}\nPer task:\n" + "\n".join(rows)
+        )
+
     def _proposals(self, analysis: Analysis, generation: int) -> list[tuple[str, str | None]]:
         """The analyst's best structural idea first, then sampled hypotheses.
 
@@ -258,6 +337,26 @@ class EvolutionLoop:
             labels.append(("llm.prompt_patch", analysis.patch))
         return labels
 
+    @staticmethod
+    def _is_better(outcome: Outcome, best: tuple[Outcome, str, str | None] | None) -> bool:
+        """Prefer more passes; among equals, prefer cheaper.
+
+        Within one generation several children can clear the gate.  Keeping the first
+        one would make the incumbent depend on proposal order, which is exactly the
+        kind of accidental state this loop is supposed to avoid.
+        """
+        if best is None:
+            return True
+        if outcome.passed != best[0].passed:
+            return outcome.passed > best[0].passed
+        candidate_cost = outcome.cost()
+        best_cost = best[0].cost()
+        if candidate_cost is None:
+            return False
+        if best_cost is None:
+            return True
+        return candidate_cost < best_cost
+
     def run(self) -> dict:
         print(f"RSI loop root: {self.root}")
         print(f"evolve set ({len(self.tasks)}): {[t.short for t in self.tasks]}")
@@ -280,6 +379,7 @@ class EvolutionLoop:
                 tasks_by_id={t.id: t for t in self.tasks},
                 runs_dir=incumbent_outcome.run_dir,
                 max_tasks=self.config.analyst_tasks,
+                cost_context=self._cost_context(incumbent_outcome),
             )
             print(f"generation {generation}: analyst pattern = {analysis.pattern!r}")
             if analysis.rules:
@@ -318,7 +418,7 @@ class EvolutionLoop:
                     f"diff={decision.diff:+.3f} floor={decision.floor:.3f} "
                     f"({decision.reason})"
                 )
-                if decision.accepted and (best is None or outcome.passed > best[0].passed):
+                if decision.accepted and self._is_better(outcome, best):
                     best = (outcome, label, patch)
 
             if best is None:

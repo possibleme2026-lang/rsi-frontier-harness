@@ -78,10 +78,15 @@ one task out of twenty is `diff = 0.05`, `floor = 0.10` — rejected, and labell
 `rejected_within_noise`. The ledger distinguishes that from `rejected_worse`, because
 "we could not tell" and "it was worse" are different findings.
 
-**Cost wins are held to the same pass rate.** A candidate that cuts measured cost by at
-least 15% is adopted at an unchanged pass rate (`accepted_cost`) — but only if it is not
-worse beyond the same floor, and only if its cost is *known for every cell*. A harness
-cannot become cheap by failing to record its usage.
+**Cost wins are held to the same pass rate *and* the same floor.** A candidate that cuts
+measured cost by at least 15% is adopted at an unchanged pass rate (`accepted_cost`) —
+but only if it is not worse beyond the same floor, only if its cost is *known for every
+cell*, and only if the paired per-task spend difference clears `z` standard errors of
+itself. A harness cannot become cheap by failing to record its usage, and it cannot
+become cheap by getting lucky on the one expensive task: that second rule was added
+after a measured run showed the point-ratio version adopting a change the holdout
+reproduced at half the size. [`RESULTS.md`](RESULTS.md) §6 has the numbers, and
+`tools/replay_gate.py` re-decides an old ledger under the new rule from its own trials.
 
 **The loop never sees the holdout.** The runnable suite is split deterministically by
 `sorted(sha256(task_id + seed))`; the loop tunes on one part and the final number is
@@ -121,22 +126,46 @@ pass and not a zero.
 
 ## 6. Honest scope
 
-The frozen suite has 30 tasks: 21 Terminal-Bench and 9 DeepSWE. The DeepSWE verifiers come
-from a corpus that is not public, so **9 of 30 tasks cannot be run here and are reported as
-unavailable rather than skipped silently**. Every number in this repository is over the
-runnable subset, and the report says so.
+The frozen suite has 30 tasks and two corpus families, and they do not share a
+verification protocol:
 
-Two further deviations are recorded in every trial record:
+| family | tasks | verifier |
+| --- | ---: | --- |
+| `terminal-bench/*` | 21 | `tests/` copied into the agent's container after the agent stops |
+| `datacurve/*` (DeepSWE) | 9 | the agent's diff is collected as a patch and graded in a **separate, pristine** container |
 
-* the container runs on the default Docker bridge network. The task metadata declares
-  `allow_internet=false`, but the benchmark's verifiers install `uv` and `pytest` at test
-  time, so a network-less container cannot be scored at all. The published run applied a
-  runtime-wide allowlist that also admitted verifier package hosts; a local Docker bridge
-  is the closest reproducible approximation.
-* the model is `DeepSeek-V4.1-Flash`, not the benchmark's Kimi K3. The run is therefore
-  **not leaderboard-comparable** by construction — the point is harness efficiency at a
-  fixed model, so the report compares token counts (price-independent) and each harness at
-  its own model price.
+The Terminal-Bench verifiers are not published with the eval; they come from the public
+`terminal-bench-2` checkout. The DeepSWE corpus is public
+([`datacurve-ai/deep-swe`](https://github.com/datacurve-ai/deep-swe)) and its nine eval
+tasks are run from it directly. Nothing is guessed at: a task whose definition or
+verifier is absent is loaded as `unavailable` and reported as such, never as a pass
+and never as a zero.
+
+Deviations, recorded in every trial record:
+
+* **Tests come from the main branch of `terminal-bench-2`, not the gated
+  `terminal-bench-2-1` artifact.** The verifiers are the published ones for these task
+  names; where a task's verifier differs between the two, this run used the available one.
+* **Containers run on the default Docker bridge network.** Every task metadata declares
+  `no-network`, but the Terminal-Bench verifiers install `uv`/`pytest` at test time, and
+  the DeepSWE grader needs its test runner, so a network-less container cannot be scored
+  at all. Published runs applied a runtime-wide allowlist that also admitted package
+  hosts; a local bridge is the closest reproducible approximation. An agent container is
+  therefore *less* constrained than the published protocol, which is disclosed wherever
+  it could matter (for example `kv-store-grpc` needs `pip install grpcio`).
+* **A verifier that fails to set itself up is not scored as a task failure.** Mirror
+  502s and DNS failures happen; when the verifier's own install fails before any test
+  runs, the cell is `infra_invalid` and is retried, not counted as a zero.
+* **DeepSWE's 3-hour agent budget is capped** (`RSIH_AGENT_TIMEOUT_CAP`, default 40
+  minutes) and the cap is recorded per trial, because the comparison is on cost per pass
+  and a 9-task budget of 27 hours is not a harness anyone can use.
+* **DeepSWE grading needs a commit.** The task's collect hook is `git diff <base> HEAD`,
+  so the runner commits a dirty tree after the agent stops, standing in for the
+  submit step the benchmark's own runtime performs.
+* **The model is `DeepSeek-V4.1-Flash`, not the benchmark's Kimi K3.** The run is
+  therefore **not leaderboard-comparable** by construction — the point is harness
+  efficiency at a fixed model, so the report compares token counts (price-independent)
+  and every harness at its own model price.
 
 ## 7. Reproducing
 
@@ -158,6 +187,52 @@ Artifacts land in `runs/<run-id>/`: `ledger.jsonl` (every proposal and its decis
 `genomes/*.json`, `trials/<task>/{trial.json,episode.json,trajectory.jsonl,llm-calls.jsonl,verifier.log,reward.txt}`,
 and `report/{REPORT.md,chart.svg,candidate.json}`.
 
-## 8. Results
+## 8. The genome, in full
+
+A genome is a frozen dataclass. Its fingerprint is the sha256 of its JSON, so two
+harnesses with the same behaviour have the same name and two with different behaviour
+never share one.
+
+| field | default | what a mutation can do to it |
+| --- | --- | --- |
+| `blocks` | `role.engineer, method.loop, tools.bash, errors.recover, budget.brevity, submit.contract` | add/remove named instruction blocks |
+| `tools` | `bash, read_file, write_file, submit` | shrink or grow the tool schema |
+| `max_steps` | 60 | ±20 |
+| `obs_head_chars` / `obs_tail_chars` | 4000 / 3000 | ±2000 |
+| `temperature` | 0.0 | 0.2 |
+| `context_budget_tokens` | 96000 | — |
+| `compaction` | `truncate` | `summarize`, `none` |
+| `keep_recent_tool_results` | 12 | +8 |
+| `nudge_text_only` | 2 | 0 |
+| `bash_timeout_s` | 240 | — |
+| `submit_guard` | `none` | `one_shot_reject` |
+| `max_output_tokens` | 0 (provider default) | 4096, 2048 |
+| `extra_prompt` | `""` | free text written by the failure analyst |
+
+22 descriptor mutations are available, grouped by the component they touch: prompt blocks
+(8), tools (2), loop parameters (11), and the analyst's free-text patch, which is not a
+descriptor mutation and is always tried alongside one. Each mutation carries the
+hypothesis it tests, and every proposal is logged with that hypothesis next to its
+measured outcome.
+
+## 9. Failure taxonomy
+
+Not every zero is a result. The runner classifies each cell before it reaches a metric:
+
+| verdict | meaning |
+| --- | --- |
+| `success` | the task's own verifier wrote a reward of 1 |
+| `failure` | the verifier ran its tests and they did not all pass |
+| `infra_invalid` | no usable reward: image unavailable, sandbox error, or **the verifier's own setup failed before any test ran** |
+| `unavailable` | the task definition or verifier is not present locally |
+| `accepted` / `rejected_within_noise` / `rejected_worse` / `accepted_cost` | the four verdicts a proposal can receive from the gate |
+
+The `infra_invalid` row is the one that protects the pass rate. Every task image ships
+without a test runner, so every verifier installs one first; when that install hits a
+mirror 502 or a DNS failure the script still writes `reward.txt = 0`, which is
+indistinguishable from an agent failure unless the log is read. The runner reads it,
+re-classifies the cell, and retries it.
+
+## 10. Results
 
 See [`RESULTS.md`](RESULTS.md) for the measured numbers and the ledger excerpt.

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,6 +24,41 @@ from .pricing import Usage
 
 class LLMError(RuntimeError):
     pass
+
+
+class _Throttle:
+    """Process-wide spacing of outbound requests.
+
+    The endpoint rate-limits per client IP.  Concurrency in the runner is about
+    containers and wall-clock, not about how fast this process may talk to the
+    provider, and a 429 in the middle of an episode does not degrade a measurement -
+    it destroys it.  So every client in the process shares one bucket.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._next_slot = 0.0
+        self._in_flight = 0
+        self._condition = threading.Condition(self._lock)
+
+    def acquire(self, max_concurrent: int, min_interval_s: float) -> None:
+        with self._condition:
+            while self._in_flight >= max_concurrent:
+                self._condition.wait(timeout=1.0)
+            self._in_flight += 1
+            now = time.monotonic()
+            wait = max(0.0, self._next_slot - now)
+            self._next_slot = max(now, self._next_slot) + min_interval_s
+        if wait:
+            time.sleep(wait)
+
+    def release(self) -> None:
+        with self._condition:
+            self._in_flight -= 1
+            self._condition.notify()
+
+
+THROTTLE = _Throttle()
 
 
 @dataclass
@@ -121,6 +157,8 @@ class LLMClient:
         )
         self.log_path = log_path
         self.call_index = 0
+        self.max_concurrent_requests = int(os.environ.get("RSIH_MAX_INFLIGHT", "2") or 2)
+        self.min_request_interval_s = float(os.environ.get("RSIH_REQUEST_INTERVAL", "0.5") or 0.5)
 
     # ------------------------------------------------------------------ helpers
 
@@ -174,32 +212,19 @@ class LLMClient:
         last_error: Exception | None = None
         while attempt <= self.settings.max_retries:
             attempt += 1
+            THROTTLE.acquire(self.max_concurrent_requests, self.min_request_interval_s)
             try:
                 response = self._openai.chat.completions.create(**payload)
-                latency = time.time() - started
-                parsed = self._to_response(response, latency)
-                self._log(
-                    {
-                        "call": self.call_index,
-                        "label": label,
-                        "attempt": attempt,
-                        "latency_s": round(latency, 3),
-                        "finish_reason": parsed.finish_reason,
-                        "usage": parsed.usage.as_dict(),
-                        "tool_calls": [
-                            {"name": c.name, "arguments": c.arguments_raw, "error": c.parse_error}
-                            for c in parsed.tool_calls
-                        ],
-                        "content_chars": len(parsed.content),
-                        "reasoning_chars": len(parsed.reasoning),
-                    }
-                )
-                return parsed
             except Exception as exc:  # noqa: BLE001 - gateway errors are heterogeneous
                 last_error = exc
+                rate_limited = "429" in str(exc) or "rate limit" in str(exc).lower()
                 if attempt > self.settings.max_retries or not self._retryable(exc):
                     break
-                sleep_for = min(30.0, 2.0**attempt) * (0.5 + random.random() / 2)
+                # A per-IP quota needs a longer wait than a transient 5xx: backing off
+                # for two seconds and retrying is how a quota turns into a lost episode.
+                base = 20.0 if rate_limited else 2.0
+                ceiling = 120.0 if rate_limited else 30.0
+                sleep_for = min(ceiling, base * (1.6 ** (attempt - 1))) * (0.7 + random.random() * 0.6)
                 self._log(
                     {
                         "call": self.call_index,
@@ -210,6 +235,28 @@ class LLMClient:
                     }
                 )
                 time.sleep(sleep_for)
+                continue
+            finally:
+                THROTTLE.release()
+            latency = time.time() - started
+            parsed = self._to_response(response, latency)
+            self._log(
+                {
+                    "call": self.call_index,
+                    "label": label,
+                    "attempt": attempt,
+                    "latency_s": round(latency, 3),
+                    "finish_reason": parsed.finish_reason,
+                    "usage": parsed.usage.as_dict(),
+                    "tool_calls": [
+                        {"name": c.name, "arguments": c.arguments_raw, "error": c.parse_error}
+                        for c in parsed.tool_calls
+                    ],
+                    "content_chars": len(parsed.content),
+                    "reasoning_chars": len(parsed.reasoning),
+                }
+            )
+            return parsed
         raise LLMError(
             f"model call failed after {attempt} attempt(s): {type(last_error).__name__}: {last_error}"
         ) from last_error
