@@ -1,0 +1,30 @@
+{
+  "id": "gen0",
+  "blocks": [
+    "role.engineer",
+    "method.loop",
+    "tools.bash",
+    "errors.recover",
+    "budget.brevity",
+    "submit.contract"
+  ],
+  "tools": [
+    "bash",
+    "read_file",
+    "write_file",
+    "submit"
+  ],
+  "max_steps": 60,
+  "obs_head_chars": 4000,
+  "obs_tail_chars": 3000,
+  "temperature": 0.0,
+  "context_budget_tokens": 96000,
+  "compaction": "truncate",
+  "keep_recent_tool_results": 12,
+  "nudge_text_only": 2,
+  "bash_timeout_s": 240.0,
+  "submit_guard": "none",
+  "lineage": [],
+  "notes": "seed harness: minimal bash loop, no self-verification block",
+  "fingerprint": "997d433a46140f8a"
+}

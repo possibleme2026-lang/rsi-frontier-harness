@@ -1,0 +1,23 @@
+{
+  "comment": "Declared rate card for the model under test. The FrontierHarness frozen table (kimi-k3-2026-08-20, see _ref-frontier-eval/skills/frontierharness-eval/scripts/pricing.json) prices the published baselines; it must not be used for a different model. Replace this file or override with RSIH_PRICE_JSON to re-price under a different card.",
+  "unit_tokens": 1000000,
+  "currency": "USD",
+  "models": {
+    "DeepSeek-V4.1-Flash": {
+      "fresh_input": 0.28,
+      "cache_write": 0.28,
+      "cache_read": 0.028,
+      "output": 0.42,
+      "source": "declared by the operator for the tierflow.cn endpoint; DeepSeek flash-tier list pricing shape (cache read = 10% of fresh input)"
+    }
+  },
+  "baseline_models": {
+    "kimi-k3": {
+      "fresh_input": 3.0,
+      "cache_write": 3.0,
+      "cache_read": 0.3,
+      "output": 15.0,
+      "source": "_ref-frontier-eval/skills/frontierharness-eval/scripts/pricing.json (kimi-k3-2026-08-20)"
+    }
+  }
+}
