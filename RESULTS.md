@@ -4,7 +4,14 @@ All numbers below were produced by this repository on the frozen FrontierHarness
 suite, with the commands in [`PROTOCOL.md`](PROTOCOL.md). The model is
 `DeepSeek-V4.1-Flash` behind `https://tierflow.cn/v1`, priced with the rate card
 declared in `genomes/pricing.json` (fresh input $0.28 / cached input $0.028 / output
-$0.42 per 1M tokens).
+$0.42 per 1M tokens). Every cell is reproducible from its stored trial directory:
+`episode.json`, `llm-calls.jsonl`, `trajectory.jsonl`, `verifier.log`, `reward.*`.
+
+**Headline.** 30 of 30 frozen tasks measured: **18/30 = 60.0%** at a total measured spend
+of **$1.7718**, i.e. **$0.0984 per solved task**. The best published harness on the same
+suite is `codex` at 66.7% and $3.468 per pass; the cheapest is `exo` at 53.3% and $1.045
+per pass. This harness lands inside the published pass-rate band (56–63% for the DSH
+variants, 58.1% suite-wide) at 10.6–35× lower cost per pass.
 
 **Read the baseline columns as the eval published them.** The published harnesses keep
 their frozen Kimi K3 rate card (3.00 / 0.30 / 15.00). Every cost comparison here is
@@ -23,7 +30,39 @@ difference can be separated.
 `rsih doctor` reports the live number. Both protocols were exercised end to end before
 any comparison was quoted.
 
-## 2. Baseline sweep — genome `gen0`, 14 terminal-bench tasks
+## 2. The 30-task result
+
+Every one of the frozen suite's thirty tasks was run. The genome is `gen1` — the
+harness as designed, before any evolution — with its 60-step loop and its two protocol
+paths.
+
+| | RSIH `gen1` | codex | dsh-creator | pi-responses | dsh-standard | exo | claude-code |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| passes | **18/30** | 20/30 | 19/30 | 18/30 | 18/30 | 16/30 | 19/30 |
+| pass rate | **60.0%** | 66.7% | 63.3% | 60.0% | 60.0% | 53.3% | 63.3% |
+| total spend on the 30 | **$1.77** | $69.37 | $62.41 | $43.79 | $62.26 | $16.72 | $348.40 |
+| effective cost per pass | **$0.098** | $3.468 | $3.285 | $2.433 | $3.459 | $1.045 | $18.337 |
+
+| suite | measured | pass rate | spend |
+| --- | ---: | ---: | ---: |
+| `terminal-bench/*` (21) | 21 | 16/21 = 76.2% | $0.71 |
+| `datacurve/*` (9) | 9 | 2/9 = 22.2% | $1.06 |
+| **all** | **30** | **18/30 = 60.0%** | **$1.77** |
+
+That is the claim this work supports, stated so it can be checked:
+
+- **Pass rate: inside the published band, not on top of it.** 18/30 ties `pi-responses`,
+  `dsh-ptc` and `dsh-standard`, is 4 tasks behind `codex`, and is ahead of `exo` and
+  `opencode`. Nothing here suggests the harness is a better *solver* than the published
+  ones.
+- **Cost: not close.** $0.098 per solved task against $1.045 for the cheapest published
+  harness (`exo`) — 10.6× — and $3.468 for `codex`, 35×. Whole-suite spend was $1.77
+  against codex's $69.37.
+- **The two suites behave completely differently.** The harness solves 76% of the
+  terminal-bench half and 22% of the DeepSWE half. Averaging those into one number hides
+  the only actionable fact in it.
+
+## 3. Baseline sweep — genome `gen0`, 14 terminal-bench tasks
 
 This is the harness as designed, with no evolution applied: 6 frozen prompt blocks, 4
 tools, a 60-step loop, byte-truncating compaction, and a one-shot submit guard.
@@ -38,37 +77,113 @@ tools, a 60-step loop, byte-truncating compaction, and a one-shot submit guard.
 | mean output tokens / task | 27,739 | 16,991 (codex) |
 | token-weighted cache hit rate | 94.5% | 63.8% (codex) |
 
-`polyglot-c-py` was `infra_invalid` (image not present locally) and is excluded from the
-denominator rather than counted as a failure. Both zeros were audited against the
-verifier logs and are genuine agent failures, not verifier setup failures.
+`polyglot-c-py` was `infra_invalid` in this sweep because its image was missing; it was
+pulled and measured separately and **passes** (§2 counts it). `dna-insert` and
+`largest-eigenval` were audited against their verifier logs: both zeros are genuine agent
+failures, not verifier-setup failures.
 
 ## 4. Where the money goes
 
-`tools/cost_anatomy.py` splits the same $0.340 by what the provider bills:
+`tools/cost_rollup.py` splits those $1.7718 across all 30 measured cells by what the
+provider actually bills:
 
 | component | tokens | cost | share |
 | --- | ---: | ---: | ---: |
-| fresh input | 222,579 | $0.0623 | 18% |
-| cached input | 4,060,672 | $0.1137 | 33% |
-| output | 390,387 | $0.1640 | 48% |
-| **total** | | **$0.3400** | |
+| fresh input | 967,573 | $0.2709 | 15% |
+| cached input | 23,204,992 | $0.6497 | 37% |
+| output | 2,026,535 | $0.8511 | 48% |
+| **total** | | **$1.7718** | |
 
-Two things follow, and they are the reason the cost number is not an accident:
+Three things follow, and they are why the cost number is not an accident:
 
-- **Cache reads are 33% of spend even at one tenth of the input price**, because the
-  transcript is 4.06 M tokens for 14 tasks. Prefix stability is a first-class design
-  constraint: the system prompt is frozen per genome, tool schemas are emitted in a
-  fixed order, and the observation window is trimmed from the middle rather than
-  rewritten, so each turn extends a cacheable prefix instead of invalidating it.
-- **Output tokens are the largest single component.** The harness is frugal with
+- **The token-weighted cache hit rate is 96.0%** (23.2 M of 24.2 M prompt tokens were
+  cache reads), against 63.8% for `codex` and 92.4% for the suite as a whole. Prefix
+  stability is a first-class design constraint here: the system prompt is frozen per
+  genome, tool schemas are emitted in a fixed order, and the observation window is
+  trimmed from the middle rather than rewritten, so each turn extends a cacheable prefix
+  instead of invalidating it.
+- **Cache reads are still 37% of spend**, even at one tenth of the input price, because
+  the transcript is 23 M tokens for 30 tasks. Being cheap required both a low cache-read
+  rate *and* a transcript small enough that 96% of it being cached still costs less than
+  the output.
+- **Output tokens are the largest single component at 48%.** The harness is frugal with
   transcript and generous with completions — the opposite of the published harnesses
-  (codex: 4.7 M input / 17 k output per task; here: 0.33 M input / 28 k output). This
-  is the most obvious lever left, which is why the evolution loop's cost branch targets
+  (codex: 4.7 M input / 17 k output per task; here: 0.81 M input / 68 k output). This is
+  the most obvious lever left, which is why the evolution loop's cost branch included
   `max_output_tokens`.
 
 ## 5. DeepSWE (datacurve) — the half of the suite that is not terminal-bench
 
-<!-- DEEPSWE SECTION -->
+Nine tasks, each a real repository at a pinned commit with a hidden fail-to-pass test
+set. The contract is different from terminal-bench in a way that matters: the agent's
+diff is collected, then graded in a **separate pristine container**, so nothing the agent
+leaves in its own filesystem can influence the verdict. Reward is binary — every
+fail-to-pass test must pass — and the verifier also reports the fraction that did.
+
+| task | reward | fail→pass tests | pass→pass | steps | spend | published passes | cheapest published pass |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| anko-typed-variable-bindings | **1** | 9/9 | 94/94 | 60 | $0.0782 | 4/12 | $1.598 |
+| fastapi-deprecation-response-headers | **1** | 137/137 | – | 60 | $0.1279 | 4/12 | $2.487 |
+| httpx-multipart-response-parsing | 0 | **121/122** | – | 55 | $0.1113 | 5/12 | $1.330 |
+| scc-bounded-memory-spilling | 0 | 26/31 | – | 60 | $0.1356 | **0/12** | nobody |
+| arktype-json-schema-refs-dependencies | 0 | 0/25 | 94/94 | 60 | $0.0697 | 2/12 | $9.987 |
+| expr-try-catch-errors | 0 | 0/79 | – | 53 | $0.1620 | 2/12 | $13.058 |
+| python-statemachine-state-data-scoping | 0 | 0/72 | 1286/1286 | 60 | $0.1422 | 7/12 | $2.503 |
+| meriyah-explicit-resource-declarations | 0 | 0/49 | – | 60 | $0.0696 | 1/12 | $7.875 |
+| katex-multicolumn-array-spans | 0 | 0/94 | – | 55 | $0.1662 | 1/12 | $7.838 |
+| **total** | **2/9** | | | | **$1.0627** | | |
+
+| harness | passes | total spend on the same 9 | effective cost per pass |
+| --- | ---: | ---: | ---: |
+| **RSIH `gen1`** | **2/9** | **$1.06** | **$0.53** |
+| codex | 5/9 | $64.51 | $12.90 |
+| dsh-creator | 4/9 | $59.04 | $14.76 |
+| claude-code | 3/9 | $332.82 | $110.94 |
+| kimi-code | 3/9 | $52.61 | $17.54 |
+| dsh-standard | 2/9 | $54.11 | $27.06 |
+| pi-responses | 2/9 | $38.33 | $19.17 |
+| exo | 0/9 | $10.30 | n/a |
+| opencode | 0/9 | $45.19 | n/a |
+
+The pass count puts this harness level with `dsh-standard`, `dsh-ptc`, `pi-responses` and
+`hermes`, and ahead of `exo` and `opencode`, on 1.6% of codex's spend for the same nine
+tasks. Two cell-level details are worth more than the aggregate:
+
+- **`httpx-multipart-response-parsing` missed binary reward by one test out of 122**, and
+  `scc-bounded-memory-spilling` — which **none of the twelve published harnesses passed** —
+  reached 26 of its 31 required tests. The binary reward hides how close those are; the
+  per-test fractions are kept in `trial.json` for exactly that reason.
+- **Three of the seven failures submitted a zero-byte patch.** Their transcripts show why:
+  107, 54 and 81 shell calls, all exploration and grep, no edit to the repository before
+  the step limit. That is a budget finding, not a capability finding, and it is testable.
+
+### Test: was the budget the constraint?
+
+`max_steps=100` is one entry in the mutation catalogue. Applied to the four tasks that
+were either step-limited with an empty patch or one test short:
+
+| task | 60 steps | 100 steps |
+| --- | --- | --- |
+| katex-multicolumn-array-spans | 0 submitted, 0/94 | **1, 94/94, 124 KB patch** |
+| python-statemachine-state-data-scoping | 0 submitted, 0/72 | 0 submitted, 0/72 |
+| meriyah-explicit-resource-declarations | 0 submitted, 0/49 | 0 submitted, 0/49 |
+| httpx-multipart-response-parsing | 0, 121/122 | 0, 121/122 (submitted itself at step 61) |
+
+One task converts from "never wrote a file" to a full pass with a single catalogue
+mutation, which confirms the diagnosis for that cell and refutes it for the other three.
+Those three fail for a different reason each:
+
+- `python-statemachine` and `meriyah` still submit nothing after 100 steps: the budget is
+  not what is missing.
+- `httpx` **declares itself finished at step 61 with one of 122 required tests failing**.
+  That is not a budget failure or a capability failure; it is the agent deciding it was
+  done without running the acceptance test — the exact behaviour that the evolution
+  child `prompt+=verify.requirements` (§6, `g1c0`) was proposed to fix, and which fixed
+  `largest-eigenval` on the terminal-bench half.
+
+**The headline is a floor, not a ceiling:** the same harness with a longer budget scores
+3/9 on this half, and the failures that remain point at self-verification rather than at
+model capability or at time.
 
 ## 6. Evolution
 

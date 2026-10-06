@@ -22,7 +22,9 @@ def main(family: str = "datacurve") -> int:
     ids: list[str] = []
     for baseline in baselines:
         for detail in baseline["task_details"].values():
-            if detail["id"].split("/")[0] == family and detail["id"] not in ids:
+            if family != "all" and detail["id"].split("/")[0] != family:
+                continue
+            if detail["id"] not in ids:
                 ids.append(detail["id"])
     ids.sort()
     print(f"{family}: {len(ids)} task(s) in the frozen eval, {len(baselines)} published harnesses")

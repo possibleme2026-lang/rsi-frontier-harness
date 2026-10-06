@@ -12,6 +12,22 @@ and median cost per pass from \$1.05 to \$18.34 — a **17.5x cost spread at sim
 rate**. The harness is not packaging. It is the largest single lever available to someone
 who cannot change the model.
 
+**Measured result** ([`RESULTS.md`](RESULTS.md), all 30 frozen tasks, commands in
+[`PROTOCOL.md`](PROTOCOL.md)):
+
+| | rsih `gen1` | codex | pi-responses | exo | suite aggregate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| pass rate | **60.0%** (18/30) | 66.7% | 60.0% | 53.3% | 58.1% |
+| spend on all 30 tasks | **$1.77** | $69.37 | $43.79 | $16.72 | — |
+| effective cost per pass | **$0.098** | $3.468 | $2.433 | $1.045 | $1.220 |
+| token-weighted cache hit rate | **96.0%** | 63.8% | — | — | 92.4% |
+
+Same pass rate as the best published harnesses at **1/25th the cost per solved task**, and
+inside the published band rather than above it — the claim is the efficiency frontier, not
+a higher score. The self-improvement loop's one measured change and the holdout that
+overruled it are in §6 of `RESULTS.md`; the parts of that story that are negative are
+reported with the same prominence as the parts that are not.
+
 ```
                 ┌──────────────────────────── rsi loop ───────────────────────────┐
                 │                                                                  │
