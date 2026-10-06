@@ -49,6 +49,16 @@ paths.
 | `datacurve/*` (9) | 9 | 2/9 = 22.2% | $1.06 |
 | **all** | **30** | **18/30 = 60.0%** | **$1.77** |
 
+One cell short of that table: `polyglot-c-py` was `infra_invalid` in the 14-task sweep
+because its image was missing; it was pulled and run on its own, and it passes. 18/30 is
+the result of a single harness configuration (`gen1`, 60 steps) on all thirty cells.
+
+Applying **one** mutation from the catalogue — `max_steps` 60 → 100 — to the four DeepSWE
+cells that were step-limited turns the suite into **19/30 = 63.3% for $1.8703**, still
+$0.098 per pass (§5 shows the probe). That is the shape of the remaining work: the
+mutations are not hypothetical, they are entries in `rsih.rsi.mutators` with a hypothesis
+attached, and this one is worth one cell and costs one cent.
+
 That is the claim this work supports, stated so it can be checked:
 
 - **Pass rate: inside the published band, not on top of it.** 18/30 ties `pi-responses`,
