@@ -650,7 +650,40 @@ What survives is narrower and better supported:
 
 A negative replication is a result. It is also the reason this report does not adopt `gen7`.
 
-### 5.5 The same bundle over the terminal half — where it loses
+### 5.5 The targeted configuration moves the cells but not the total
+
+`gen14` is the bundle with the measured causes of loss removed: `gen6`'s terminal-side
+settings (a 100-step budget and `verify.self_check`), plus the artifact gate and the single
+conformance block, and none of the countdown, spec checklist or new-surface block. Its
+repository half is complete and its terminal half is still running, so this is a partial
+reading:
+
+| task | `gen1` | `gen14` |
+| --- | ---: | ---: |
+| anko-typed-variable-bindings | pass | **pass** (72 steps) |
+| katex-multicolumn-array-spans | fail | **pass** (59 steps) |
+| fastapi-deprecation-response-headers | pass | fail (55 steps) |
+| expr-try-catch-errors | fail | fail (41 steps) |
+| httpx-multipart-response-parsing | 121/122 | fail |
+| arktype-json-schema-refs-dependencies | fail | fail (100 steps) |
+| meriyah-explicit-resource-declarations | fail | fail (100 steps) |
+| python-statemachine-state-data-scoping | fail | fail (100 steps), `gen6` passed it |
+| scc-bounded-memory-spilling | fail | fail (35 steps) |
+| **repository passes** | **2/9** | **2/9** |
+
+The mechanisms do what they were built to do, one cell at a time: `anko` is recovered from
+`gen7`'s wall-clock death, `katex` is passed for the first time in this report, and
+`build-cython-ext` — which `gen7` lost — passes on the terminal half at 91 steps. But the
+repository total is unchanged at 2 of 9, because `fastapi` moves the other way and the
+mechanisms that convert one hard cell are not the mechanisms that convert another.
+
+**So no configuration measured here beats `gen1`'s 18/30**, and the honest headline is
+unchanged. What the session produced is a mechanism that verifiably fixes a diagnosed
+failure mode, a dense fitness signal that lets the evolutionary loop see progress the
+pass-count gate cannot, and a set of negative results — the output cap, the countdown, the
+three prompt blocks as a bundle — each of which saves a later experiment from being run.
+
+### 5.6 The same bundle over the terminal half — where it loses
 
 The repository half is nine of thirty cells, so §5.3 cannot say whether `gen7` is a better
 harness. It was then run on all 21 terminal-bench cells (`runs/gen7-tb`).
