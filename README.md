@@ -122,6 +122,20 @@ one task out of twenty is `diff = 0.05`, `floor = 0.10` — rejected, and labell
 `rejected_within_noise`. The ledger distinguishes that from `rejected_worse`, because
 "we could not tell" and "it was worse" are different findings.
 
+**A change may also win on the graded fraction rather than on the pass count.** A pass/fail
+gate is blind to the difference between writing nothing and writing almost everything, and
+the repository tasks report both: how many of the hidden required tests passed, and what
+fraction of the existing suite stayed green. `Outcome.capability()` scores a pass at 1.0 and
+a failure at `required × existing` — multiplied, so breaking the existing suite is penalised
+rather than averaged away, and capped below 1.0 so partial credit can never be mistaken for
+a pass. A candidate is then adopted as `accepted_capability` on a paired *t*-test of those
+per-task scores, under two restrictions that stop it from becoming a rubber stamp: it may
+not lose a pass, and both runs must cover the same cells. On the pre-existing runs the dense
+gate agrees with the pass gate rather than overruling it — `gen6`'s repository gains are
+offset by its losses and read as noise (`t = 0.06`), and two genuinely worse configurations
+are still labelled regressions
+([`tools/replay_capability_gate.py`](tools/replay_capability_gate.py)).
+
 **Cost wins are held to the same pass rate *and* the same floor.** A candidate that cuts
 measured cost by at least 15% is adopted at an unchanged pass rate (`accepted_cost`) —
 but only if it is not worse beyond the same floor, only if its cost is *known for every
