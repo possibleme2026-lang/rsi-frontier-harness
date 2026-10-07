@@ -654,34 +654,65 @@ A negative replication is a result. It is also the reason this report does not a
 
 `gen14` is the bundle with the measured causes of loss removed: `gen6`'s terminal-side
 settings (a 100-step budget and `verify.self_check`), plus the artifact gate and the single
-conformance block, and none of the countdown, spec checklist or new-surface block. Its
-repository half is complete and its terminal half is still running, so this is a partial
-reading:
+conformance block, and none of the countdown, spec checklist or new-surface block. It ran
+all thirty cells in one pass: **17/30 for $1.9626.**
 
 | task | `gen1` | `gen14` |
 | --- | ---: | ---: |
 | anko-typed-variable-bindings | pass | **pass** (72 steps) |
 | katex-multicolumn-array-spans | fail | **pass** (59 steps) |
-| fastapi-deprecation-response-headers | pass | fail (55 steps) |
+| largest-eigenval | fail (0/3) | **pass** (44 steps) |
+| fastapi-deprecation-response-headers | pass | fail |
 | expr-try-catch-errors | fail | fail (41 steps) |
 | httpx-multipart-response-parsing | 121/122 | fail |
 | arktype-json-schema-refs-dependencies | fail | fail (100 steps) |
 | meriyah-explicit-resource-declarations | fail | fail (100 steps) |
 | python-statemachine-state-data-scoping | fail | fail (100 steps), `gen6` passed it |
-| scc-bounded-memory-spilling | fail | fail (35 steps) |
+| scc-bounded-memory-spilling | fail | fail |
+| polyglot-c-py | pass | fail |
+| code-from-image | pass | fail |
+| extract-elf | fail | fail, `gen6` passed it |
 | **repository passes** | **2/9** | **2/9** |
+| **total** | **18/30** | **17/30** |
 
-The mechanisms do what they were built to do, one cell at a time: `anko` is recovered from
-`gen7`'s wall-clock death, `katex` is passed for the first time in this report, and
-`build-cython-ext` — which `gen7` lost — passes on the terminal half at 91 steps. But the
-repository total is unchanged at 2 of 9, because `fastapi` moves the other way and the
-mechanisms that convert one hard cell are not the mechanisms that convert another.
+The mechanisms do what they were built to do, one cell at a time. `anko` is recovered from
+`gen7`'s wall-clock death. `katex` is passed for the first time in this report. And
+`largest-eigenval` — which failed under `gen1` (three times), `gen6` and `gen7` — passes
+here at 44 steps. But `fastapi` and `polyglot-c-py` move the other way, `code-from-image`
+and `extract-elf` are lost, and the repository total is unchanged at 2 of 9.
 
-**So no configuration measured here beats `gen1`'s 18/30**, and the honest headline is
-unchanged. What the session produced is a mechanism that verifiably fixes a diagnosed
-failure mode, a dense fitness signal that lets the evolutionary loop see progress the
-pass-count gate cannot, and a set of negative results — the output cap, the countdown, the
-three prompt blocks as a bundle — each of which saves a later experiment from being run.
+Against `gen6`, the only other configuration with a clean thirty-cell run, the dense gate
+rejects `gen14` and is right to:
+
+| axis | `gen6` | `gen14` | |
+| --- | ---: | ---: | --- |
+| passes | **18/30** | 17/30 | −1 |
+| graded credit | 19.931 | 18.894 | −1.037 |
+| spend | $2.1216 | $1.9626 | **−7.5%** |
+| completion tokens | 2,160,022 | 1,954,974 | −9.5% |
+| agent minutes | 399.9 | 453.4 | +13.4% |
+| credit per dollar | 9.39 | 9.63 | +2.6% |
+| gate verdict | | | `rejected_worse`, `capability_t = −0.39` |
+
+So `gen14` buys 7.5% off the bill for one cell, and `gen1` remains both better and cheaper
+than it ($1.7718 for 18, against $1.9626 for 17). **No configuration measured in this
+session beats `gen1`'s 18/30 = 60.0% at $0.0984 per pass**, and that is the result.
+
+What the session did produce is worth stating plainly, because it is not nothing:
+
+- a **diagnosis** that replaces the assumed one — the failures are not budget-bound, they
+  are artifacts-never-written, and that holds across every stored run rather than one A/B;
+- a **mechanism** that fixes it where it can, with a verified causal chain on `expr`
+  (1.2 KB scratch patch → 18.7 KB product patch, 0/79 → 79/79) and a correct stop condition
+  (0 gate queries on 20 terminal cells);
+- a **dense fitness signal** so the evolutionary loop can see progress that a pass count
+  cannot, which is what made the `gen14` rejection above a measured decision rather than a
+  coin flip;
+- **four negative results** — the output cap twice, the countdown, and the prompt bundle —
+  each of which would otherwise have been shipped as an improvement on the strength of the
+  cell it happened to win.
+
+## 6. Evolution
 
 ### 5.6 The same bundle over the terminal half — where it loses
 
