@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,7 +22,17 @@ from rsih.agent.genome import (
     GenomeLibrary,
     default_genome,
 )
+from rsih.agent.loop import (
+    ARTIFACT_GATE_TEXT,
+    ENDGAME_TEXT,
+    TRUNCATION_TEXT,
+    AgentLoop,
+    _gate_due,
+    _retry_schedule,
+)
+from rsih.agent.tools import _is_product_path, _looks_like_missing_command
 from rsih.bench.sandbox import CWD_SENTINEL, EXIT_SENTINEL, DockerSandbox
+from rsih.llm.client import LLMError, LLMResponse, ToolCall
 from rsih.llm.pricing import CostLedger, RateCard, Usage, rate_card
 from rsih.rsi.evolve import Outcome, paired_decision, split_tasks
 from rsih.rsi.mutators import MUTATIONS, applicable, propose
@@ -362,3 +373,233 @@ def test_verifier_setup_failure_is_not_an_agent_failure():
     # the missing env file alone is a warning: uv still ran the suite
     mixed = "/tests/test.sh: line 9: /root/.local/bin/env: No such file or directory\n1 failed in 0.07s\n"
     assert verifier_setup_failure(mixed) is None
+
+
+# --------------------------------------------------- loop robustness the research forced
+#
+# Each of these covers a change that was made because a failure was *measured*: episodes
+# that ended on a transient gateway error, episodes that were stopped mid-thought by the
+# output cap, and episodes that spent their whole budget without editing the product.
+
+
+def test_retry_schedule_is_off_by_default_and_bounded():
+    assert _retry_schedule(0) == []
+    waits = _retry_schedule(5)
+    assert len(waits) == 5
+    assert waits == sorted(waits), "backoff must not go backwards"
+    assert waits[0] >= 1.0 and waits[-1] <= 90.0
+
+
+def test_artifact_gate_fires_on_a_fifth_of_the_budget():
+    for cap in (20, 60, 100):
+        fired = [i for i in range(cap) if _gate_due(i, cap)]
+        assert 4 <= len(fired) <= 6, (cap, fired)
+        assert fired[-1] < cap, "the gate must not fire on the final step only"
+    # a short episode still gets more than one chance
+    assert _gate_due(2, 10)
+
+
+def test_product_path_excludes_scratch_and_test_material():
+    # the two measured scratch-only patches, verbatim from the audit
+    assert not _is_product_path("ark/json-schema/scratch.ts")
+    assert not _is_product_path("scratch/t1.ts")
+    assert not _is_product_path("scratch_msg_test.go")
+    # a checked-in test file is not the deliverable either
+    assert not _is_product_path("tests/test_multipart_response.py")
+    assert not _is_product_path("src/foo.test.ts")
+    # but real product source is what the gate is looking for
+    for path in (
+        "fastapi/routing.py",
+        "src/parser.ts",
+        "processor/formatters.go",
+        "statemachine/state_data.py",
+        "parser/parser.go.y",
+        "httpx/_multipart_response.py",
+    ):
+        assert _is_product_path(path), path
+
+
+def test_missing_command_is_only_inferred_for_shell_exec_failures():
+    assert _looks_like_missing_command("bash: foo: command not found\n", 127)
+    assert _looks_like_missing_command("bash: foo: command not found\n", None)
+    # a missing *data* file reads the same way but must not trigger a PATH hint
+    assert not _looks_like_missing_command("cat: /app/data.csv: No such file or directory\n", 1)
+    assert not _looks_like_missing_command("", 0)
+
+
+class _StubSandbox:
+    """Minimal stand-in: the loop only needs exec_script to answer the gate's query."""
+
+    def __init__(self, status_output: str = "", exit_code: int = 0):
+        self.status_output = status_output
+        self.exit_code = exit_code
+        self.commands: list[str] = []
+
+    def exec_script(self, command: str, timeout_s: float = 60.0):
+        from rsih.bench.sandbox import ExecResult
+
+        self.commands.append(command)
+        return ExecResult(command, self.exit_code, self.status_output, 0.01, False)
+
+
+class _ScriptedClient:
+    """Returns queued responses; raises for entries that are exceptions."""
+
+    def __init__(self, responses: list, model: str = "DeepSeek-V4.1-Flash"):
+        self.responses = list(responses)
+        self.calls: list[list[dict]] = []
+        # the loop only reads `.model` (to pick the rate card), so a stand-in avoids
+        # building the whole application settings object for a unit test
+        self.settings = SimpleNamespace(model=model)
+
+    def complete(self, messages, **kwargs):
+        self.calls.append([dict(m) for m in messages])
+        item = self.responses.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def _reply(content: str = "", calls: list[ToolCall] | None = None, finish: str = "stop"):
+    from rsih.llm.pricing import Usage
+
+    return LLMResponse(
+        content=content,
+        reasoning="",
+        tool_calls=calls or [],
+        usage=Usage(prompt_tokens=100, completion_tokens=10, cached_tokens=50),
+        latency_s=0.1,
+        finish_reason=finish,
+        raw={},
+    )
+
+
+def _bash_call(command: str = "ls", call_id: str = "c1") -> ToolCall:
+    return ToolCall(id=call_id, name="bash", arguments_raw="{}", arguments={"command": command})
+
+
+def _task(tmp_path: Path):
+    from rsih.bench.tasks import Task
+
+    return Task(
+        id="datacurve/example",
+        suite="datacurve",
+        name="example",
+        instruction="Implement the feature.",
+        docker_image="example:latest",
+        cpus=2.0,
+        memory_mb=8192,
+        storage_mb=20480,
+        agent_timeout_s=600.0,
+        verifier_timeout_s=1800.0,
+        allow_internet=False,
+        workdir="/app",
+        agent_timeout_declared_s=5400.0,
+        collect_cmd="cd /app && git diff --binary abc HEAD > /tmp/model.patch",
+        tests_dir=tmp_path,
+    )
+
+
+def test_episode_survives_a_transient_gateway_error(tmp_path: Path):
+    """One 503 must not discard an episode that has already done work."""
+    genome = default_genome("retry-on").derive(
+        "retry-on", mutation="retry_model_errors=2", retry_model_errors=2
+    )
+    calls = ToolCall(id="s1", name="submit", arguments_raw="{}", arguments={"summary": "done"})
+    client = _ScriptedClient([_reply("thinking", [_bash_call()]), LLMError("503"), _reply("", [calls])])
+    loop = AgentLoop(client, deadline_s=60.0)
+    episode = loop.run(_task(tmp_path), _StubSandbox(), genome)
+    assert episode.exit_reason == "submitted"
+    assert episode.model_retries == 1
+    # the retry re-sent the identical history: nothing was appended in between
+    assert len(client.calls[2]) == len(client.calls[1])
+
+
+def test_episode_still_fails_when_the_error_persists(tmp_path: Path):
+    genome = default_genome("retry-on").derive(
+        "retry-on", mutation="retry_model_errors=1", retry_model_errors=1
+    )
+    client = _ScriptedClient([LLMError("boom"), LLMError("boom")])
+    loop = AgentLoop(client, deadline_s=60.0)
+    episode = loop.run(_task(tmp_path), _StubSandbox(), genome)
+    assert episode.exit_reason == "model_error"
+    assert episode.model_retries == 1
+
+
+def test_a_truncated_turn_is_recovered_not_treated_as_silence(tmp_path: Path):
+    """The gen5 failure mode: an output cap stops the model mid-thought."""
+    genome = default_genome("cap").derive(
+        "cap", mutation="truncation_recovery=True", truncation_recovery=True, max_output_tokens=2048
+    )
+    submit = ToolCall(id="s1", name="submit", arguments_raw="{}", arguments={"summary": "ok"})
+    client = _ScriptedClient([
+        _reply("I was in the middle of", finish="length"),  # no tool call, cut off
+        _reply("", [_bash_call()]),
+        _reply("", [submit]),
+    ])
+    loop = AgentLoop(client, deadline_s=60.0)
+    episode = loop.run(_task(tmp_path), _StubSandbox(), genome)
+    assert episode.truncation_recoveries == 1
+    assert episode.exit_reason == "submitted"
+    assert TRUNCATION_TEXT in client.calls[1][-1]["content"]
+
+
+def test_prose_without_truncation_still_uses_the_plain_nudge(tmp_path: Path):
+    genome = default_genome("cap").derive(
+        "cap", mutation="truncation_recovery=True", truncation_recovery=True
+    )
+    submit = ToolCall(id="s1", name="submit", arguments_raw="{}", arguments={"summary": "ok"})
+    client = _ScriptedClient([_reply("here is my plan"), _reply("", [submit])])
+    loop = AgentLoop(client, deadline_s=60.0)
+    episode = loop.run(_task(tmp_path), _StubSandbox(), genome)
+    assert episode.truncation_recoveries == 0
+    assert episode.nudge_count == 1
+
+
+def test_artifact_gate_warns_while_the_product_is_untouched(tmp_path: Path):
+    genome = default_genome("gate").derive(
+        "gate", mutation="artifact_gate=True", artifact_gate=True, max_steps=10
+    )
+    submit = ToolCall(id="s1", name="submit", arguments_raw="{}", arguments={"summary": "ok"})
+    responses = [_reply("", [_bash_call(f"echo {i}", f"c{i}")]) for i in range(4)]
+    responses.append(_reply("", [submit]))
+    sandbox = _StubSandbox(status_output="?? scratch/t1.ts\n")
+    client = _ScriptedClient(responses)
+    loop = AgentLoop(client, deadline_s=600.0)
+    episode = loop.run(_task(tmp_path), sandbox, genome)
+    assert episode.artifact_warnings >= 1
+    injected = [
+        m for call in client.calls for m in call
+        if m.get("role") == "tool" and ARTIFACT_GATE_TEXT in (m.get("content") or "")
+    ]
+    assert injected, "the gate never reached the model"
+
+
+def test_artifact_gate_stays_quiet_once_product_source_changes(tmp_path: Path):
+    genome = default_genome("gate").derive(
+        "gate", mutation="artifact_gate=True", artifact_gate=True, max_steps=10
+    )
+    submit = ToolCall(id="s1", name="submit", arguments_raw="{}", arguments={"summary": "ok"})
+    responses = [_reply("", [_bash_call(f"echo {i}", f"c{i}")]) for i in range(4)]
+    responses.append(_reply("", [submit]))
+    sandbox = _StubSandbox(status_output=" M fastapi/routing.py\n?? scratch/t1.ts\n")
+    client = _ScriptedClient(responses)
+    loop = AgentLoop(client, deadline_s=600.0)
+    episode = loop.run(_task(tmp_path), sandbox, genome)
+    assert episode.artifact_warnings == 0
+
+
+def test_diff_graded_note_tells_the_agent_the_tests_are_hidden(tmp_path: Path):
+    from rsih.agent.loop import _env_note, _is_diff_graded
+
+    task = _task(tmp_path)
+    assert _is_diff_graded(task)
+    note = _env_note(task, default_genome("g"), 60)
+    assert "NOT in this container" in note
+    assert "all-or-nothing" in note
+    # a task whose artifact is a file tree must not get the repository wording
+    from dataclasses import replace
+
+    file_task = replace(task, collect_cmd="cp /app/out.txt /logs/artifacts/out.txt")
+    assert not _is_diff_graded(file_task)
+    assert "NOT in this container" not in _env_note(file_task, default_genome("g"), 60)

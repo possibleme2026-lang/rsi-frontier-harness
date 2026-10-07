@@ -1,4 +1,4 @@
-"""The harness as a genome.
+﻿"""The harness as a genome.
 
 The harness is not a file that a human edits between runs.  It is a value: an
 ordered list of named prompt blocks, an enabled tool set, and the numeric policy
@@ -70,6 +70,37 @@ class Genome:
     #: part of the search space: the RSI loop may write anything here, and the
     #: ledger records the exact text together with what it measured.
     extra_prompt: str = ""
+    #: How many times to re-issue an identical model call after the client has already
+    #: exhausted its own retries.  Ending the episode on the first gateway hiccup throws
+    #: away every step taken so far; the benchmark's own orchestrator retries (max_retries
+    #: 3) and its published numbers are multi-attempt aggregates, so a single 503 should
+    #: not decide a cell.  Nothing is appended between attempts, so the prefix cache still
+    #: hits and the retry cannot change what the agent has already seen.
+    retry_model_errors: int = 0
+    #: When the provider stops a response for hitting the output limit, a reasoning model
+    #: can burn its whole turn mid-thought and emit no tool call at all.  This appends an
+    #: explicit "you were cut off, answer with exactly one tool call" turn instead of
+    #: counting it as the model going quiet.  Without it, a `max_output_tokens` cap turns
+    #: into a silent episode-killer.
+    truncation_recovery: bool = False
+    #: On exit 127 / "command not found", look for similarly named installed binaries and
+    #: append them.  Missing or not-in-PATH executables are the single largest measured
+    #: command-failure category on this benchmark, and the information is already in the
+    #: container.
+    command_not_found_hint: bool = False
+    #: Append "step k/N (M left)" to every observation and, in the last fifth of the
+    #: budget, an endgame instruction.  The step cap is otherwise stated once, in the
+    #: first message, tens of thousands of tokens back -- which is how an agent that had
+    #: already produced a working patch talks itself into rewriting it.
+    step_countdown: bool = False
+    #: Periodically check whether the graded artifact -- the repository diff -- has been
+    #: touched at all, and say so if it has not.  This exists because the failure was
+    #: measured rather than assumed: on the repository suites, five of seven failures had
+    #: still not edited a single product file when their budget ran out.  Two of them
+    #: ended with a diff consisting entirely of their own scratch files.  Exploration is
+    #: not the deliverable, and an agent that is 40 steps into probing error messages
+    #: needs to be told that, in the terms the grader uses.
+    artifact_gate: bool = False
     #: ordered provenance: parent id, then one label per applied mutation
     lineage: tuple[str, ...] = field(default_factory=tuple)
     notes: str = ""
@@ -132,6 +163,11 @@ class Genome:
             "submit_guard": self.submit_guard,
             "max_output_tokens": self.max_output_tokens,
             "extra_prompt": self.extra_prompt,
+            "retry_model_errors": self.retry_model_errors,
+            "truncation_recovery": self.truncation_recovery,
+            "command_not_found_hint": self.command_not_found_hint,
+            "step_countdown": self.step_countdown,
+            "artifact_gate": self.artifact_gate,
         }
         blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
@@ -156,6 +192,11 @@ class Genome:
             "submit_guard": self.submit_guard,
             "max_output_tokens": self.max_output_tokens,
             "extra_prompt": self.extra_prompt,
+            "retry_model_errors": self.retry_model_errors,
+            "truncation_recovery": self.truncation_recovery,
+            "command_not_found_hint": self.command_not_found_hint,
+            "step_countdown": self.step_countdown,
+            "artifact_gate": self.artifact_gate,
             "lineage": list(self.lineage),
             "notes": self.notes,
             "fingerprint": self.fingerprint(),
@@ -182,6 +223,11 @@ class Genome:
             "submit_guard",
             "max_output_tokens",
             "extra_prompt",
+            "retry_model_errors",
+            "truncation_recovery",
+            "command_not_found_hint",
+            "step_countdown",
+            "artifact_gate",
             "lineage",
             "notes",
         }
@@ -237,3 +283,5 @@ class GenomeLibrary:
 
     def list_ids(self) -> list[str]:
         return sorted(p.stem for p in self.root.glob("*.json"))
+
+

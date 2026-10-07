@@ -1,0 +1,56 @@
+[
+  {
+    "variant": "baseline (nothing extra)",
+    "rep": 0,
+    "prompt_tokens": 395,
+    "completion_tokens": 1022,
+    "reasoning_tokens": 528,
+    "latency_s": 9.49110950017348,
+    "note": "tool_calls=1"
+  },
+  {
+    "variant": "reasoning_effort=\"low\"",
+    "rep": 0,
+    "prompt_tokens": 395,
+    "completion_tokens": 1134,
+    "reasoning_tokens": 731,
+    "latency_s": 10.013404599856585,
+    "note": "tool_calls=1"
+  },
+  {
+    "variant": "reasoning_effort=\"high\"",
+    "rep": 0,
+    "prompt_tokens": 395,
+    "completion_tokens": 441,
+    "reasoning_tokens": 400,
+    "latency_s": 4.114931699819863,
+    "note": "tool_calls=1"
+  },
+  {
+    "variant": "thinking={\"type\":\"disabled\"}",
+    "rep": 0,
+    "prompt_tokens": null,
+    "completion_tokens": null,
+    "reasoning_tokens": null,
+    "latency_s": null,
+    "note": "LLMError: model call failed after 1 attempt(s): TypeError: Completions.create() got an unexpected keyword argument 'thinking'"
+  },
+  {
+    "variant": "enable_thinking=False",
+    "rep": 0,
+    "prompt_tokens": null,
+    "completion_tokens": null,
+    "reasoning_tokens": null,
+    "latency_s": null,
+    "note": "LLMError: model call failed after 1 attempt(s): TypeError: Completions.create() got an unexpected keyword argument 'enable_thinking'"
+  },
+  {
+    "variant": "reasoning={\"effort\":\"low\"}",
+    "rep": 0,
+    "prompt_tokens": null,
+    "completion_tokens": null,
+    "reasoning_tokens": null,
+    "latency_s": null,
+    "note": "LLMError: model call failed after 1 attempt(s): TypeError: Completions.create() got an unexpected keyword argument 'reasoning'"
+  }
+]

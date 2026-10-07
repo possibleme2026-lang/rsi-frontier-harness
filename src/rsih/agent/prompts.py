@@ -80,6 +80,39 @@ BLOCKS: dict[str, str] = {
         "When the task is finished, call the submit tool. Calling submit ends the "
         "episode: nothing you do afterwards is counted."
     ),
+    # ------------------------------------------------------- grading protocol
+    # The next three blocks exist because the failure they address was measured, not
+    # guessed: on the repository suites every feature test is added by the grader and is
+    # therefore invisible, and several episodes were spent probing for tests that are not
+    # in the container while never editing the product source at all.
+    "protocol.spec_checklist": (
+        "The task statement is the whole specification. Before writing code, turn it "
+        "into a numbered list of observable requirements -- exact paths, exact strings, "
+        "exact values, exact failure behaviour -- and satisfy each one explicitly. Do "
+        "not infer requirements from the surrounding code: a test that is not in this "
+        "container decides the outcome."
+    ),
+    "protocol.conformance": (
+        "When the statement describes parsing, a wire format, headers or serialisation, "
+        "the hidden assertions are exact string or byte equality. Enumerate every variant "
+        "the statement names -- space versus tab, LF versus CRLF, quoting, empty values, "
+        "duplicates, missing fields -- and test each one. When it says a value is "
+        "appended, continued or unfolded, use the canonical separator the specification "
+        "names (usually a single space); never preserve the source bytes."
+    ),
+    "protocol.new_surface": (
+        "If you add a flag, parameter or option, also enumerate the invalid combinations "
+        "the statement implies -- required together, must be positive, must exist -- and "
+        "make each exit non-zero with the error on stderr. A flag that is currently "
+        "rejected as unknown is often covered by an existing 'invalid input is rejected' "
+        "test that you will silently break by accepting it without validation."
+    ),
+    "artifact.require_change": (
+        "You have not modified the project source yet. Stop reading and probing: the "
+        "graded artifact is a diff of this repository, so explore only as far as you need "
+        "to write the first correct edit, then write it. If the repository generates a "
+        "file from a grammar or schema source, edit the source and regenerate."
+    ),
 }
 
 #: Blocks a genome may not drop; they carry the mechanics the loop depends on.

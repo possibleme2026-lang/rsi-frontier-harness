@@ -224,6 +224,99 @@ MUTATIONS: dict[str, Mutation] = {
         if g.max_output_tokens == 0
         else g.derive(i, mutation="max_output_tokens=0", max_output_tokens=0),
     ),
+    # ---------------------------------------------------- mechanism, not prose
+    # These are switches on the loop itself rather than text in the prompt.  The
+    # hypothesis behind each was measured before it was written down: episodes ended on
+    # transient gateway errors, an output cap stopped turns mid-thought, missing
+    # executables were the largest single command-failure class, and -- on the repository
+    # suites -- most failures had not edited a single product file.
+    "loop.artifact_gate=true": Mutation(
+        label="loop.artifact_gate=true",
+        component="loop",
+        hypothesis=(
+            "the graded artifact is a repository diff; an agent still probing after a "
+            "fifth of its budget has produced nothing that can score, so telling it that "
+            "in the grader's own terms should convert exploration into an edit"
+        ),
+        apply=lambda g, i: None
+        if g.artifact_gate
+        else g.derive(i, mutation="artifact_gate=true", artifact_gate=True),
+    ),
+    "loop.retry_model_errors=2": Mutation(
+        label="loop.retry_model_errors=2",
+        component="loop",
+        hypothesis=(
+            "one gateway hiccup currently discards the whole episode; re-issuing the "
+            "identical call costs nothing extra when it succeeds and recovers the cell "
+            "when it does not"
+        ),
+        apply=lambda g, i: None
+        if g.retry_model_errors >= 2
+        else g.derive(i, mutation="retry_model_errors=2", retry_model_errors=2),
+    ),
+    "loop.truncation_recovery=true": Mutation(
+        label="loop.truncation_recovery=true",
+        component="loop",
+        hypothesis=(
+            "an output cap is only safe with an explicit recovery turn; without it a "
+            "model cut off mid-thought is indistinguishable from one that went quiet"
+        ),
+        apply=lambda g, i: None
+        if g.truncation_recovery
+        else g.derive(i, mutation="truncation_recovery=true", truncation_recovery=True),
+    ),
+    "loop.command_not_found_hint=true": Mutation(
+        label="loop.command_not_found_hint=true",
+        component="loop",
+        hypothesis=(
+            "missing or not-in-PATH executables are the largest measured command-failure "
+            "class, and the correct spelling is already inside the container"
+        ),
+        apply=lambda g, i: None
+        if g.command_not_found_hint
+        else g.derive(i, mutation="command_not_found_hint=true", command_not_found_hint=True),
+    ),
+    "loop.step_countdown=true": Mutation(
+        label="loop.step_countdown=true",
+        component="loop",
+        hypothesis=(
+            "the step cap is stated once at the start and then never again; a running "
+            "countdown plus an endgame instruction should stop an agent from rewriting "
+            "work that was already correct"
+        ),
+        apply=lambda g, i: None
+        if g.step_countdown
+        else g.derive(i, mutation="step_countdown=true", step_countdown=True),
+    ),
+    "prompt+=protocol.spec_checklist": Mutation(
+        label="prompt+=protocol.spec_checklist",
+        component="prompt",
+        hypothesis=(
+            "every graded feature test is added by the grader and is absent from the "
+            "container, so the statement is the whole specification and should be turned "
+            "into an explicit requirement list"
+        ),
+        apply=lambda g, i: _with_block(g, i, "protocol.spec_checklist"),
+    ),
+    "prompt+=protocol.conformance": Mutation(
+        label="prompt+=protocol.conformance",
+        component="prompt",
+        hypothesis=(
+            "the parsing and wire-format tasks grade exact string or byte equality, and "
+            "the near-miss cell failed on one continuation byte -- enumerating the format "
+            "variants should close that class"
+        ),
+        apply=lambda g, i: _with_block(g, i, "protocol.conformance"),
+    ),
+    "prompt+=protocol.new_surface": Mutation(
+        label="prompt+=protocol.new_surface",
+        component="prompt",
+        hypothesis=(
+            "adding a flag without validating it turns a vacuously-passing 'invalid input "
+            "is rejected' test into a regression; the p2p half of the grade is binary"
+        ),
+        apply=lambda g, i: _with_block(g, i, "protocol.new_surface"),
+    ),
 }
 
 
