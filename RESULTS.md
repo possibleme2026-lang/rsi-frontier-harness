@@ -626,21 +626,29 @@ The repository half is nine of thirty cells, so §5.3 cannot say whether `gen7` 
 harness. It was then run on all 21 terminal-bench cells (`runs/gen7-tb`).
 
 The tightest comparison is against `gen6`, the only configuration with a single clean
-21-cell terminal run. On the 19 cells both covered:
+21-cell terminal run. On all 21 cells both covered:
 
 | | cells |
 | --- | ---: |
-| `gen6` passed, `gen7` passed — held | 12 |
+| `gen6` passed, `gen7` passed — held | 13 |
 | `gen6` passed, `gen7` **failed** — lost | **3** (`build-cython-ext`, `extract-elf`, `polyglot-c-py`) |
-| `gen6` failed, `gen7` passed — won | **0** |
+| `gen6` failed, `gen7` passed — won | **1** (`dna-insert`) |
 | both failed | 4 |
-| **net** | **−3** |
+| **net** | **−2** |
 
-`gen7` scores **12/21** on the terminal half against `gen6`'s 15/21, and against `gen1`'s
-pooled terminal record it loses `polyglot-c-py` and wins nothing
-(`tools/tb_compare.py`). Adding the repository half — where the two are a tie at 2 passes —
-`gen7` is **14/30 against `gen1`'s 18/30.** The bundle is a net loss and `gen1` stays the
+`gen7` scores **14/21** on the terminal half against `gen6`'s 15/21, and against `gen1`'s
+pooled terminal record (16 comparable cells) it loses one and wins none — a net −1
+(`tools/tb_compare.py`). With the repository half, where the two are a tie at 2 passes,
+`gen7` is **16/30 against `gen1`'s 18/30.** The bundle is a net loss and `gen1` stays the
 reported harness.
+
+One correction this section had to make to itself, because it inflates nothing but was
+wrong for a while: `dna-insert` first ran to a wall-clock exit and was recorded
+`infra_invalid` at 2009 s, then was retried within the same run and passed at 19 steps. The
+trial directory holds the retry, and an earlier count of this half — taken before the retry
+landed — read the cell as a failure and the half as 12/21. `UNSCORABLE_EXIT_REASONS` exists
+for exactly this, and the summary line the runner prints (`pass 14/21 valid`) is the one to
+believe.
 
 It matters which part of the bundle did the damage:
 
