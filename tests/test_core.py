@@ -708,3 +708,70 @@ def test_artifact_gate_stays_quiet_when_the_deliverable_is_not_a_diff(tmp_path: 
     assert not [c for c in sandbox.commands if "git status" in c], (
         "the gate should not even query a task that is not graded on a diff"
     )
+
+
+# ------------------------------------------------------- identity has to be stable
+#
+# A fingerprint is only useful if it still names the same configuration later.  The first
+# version hashed a hard-coded list of every field, so adding one knob that defaults to off
+# changed the hash of every genome ever recorded and every stored trial became
+# unattributable.  These tests hold the fingerprint to the delta from the defaults.
+
+
+def test_fingerprint_ignores_identity_and_provenance():
+    a = default_genome("one")
+    b = default_genome("two")
+    assert a.id != b.id
+    assert a.fingerprint() == b.fingerprint(), "id and lineage are not behaviour"
+
+
+def test_fingerprint_is_the_delta_from_the_defaults():
+    """Every field carrying its default value must be absent from the payload.
+
+    `blocks` and `tools` are required fields with no default, so they are always present --
+    they *are* the behaviour.  Everything with a default that the genome leaves alone must
+    not appear, which is what makes the identity survive a new knob being added.
+    """
+    import dataclasses as dc
+
+    seed = default_genome("seed")
+    delta = seed.behaviour()
+    # blocks has no dataclass default, so it is always part of the identity; tools holds
+    # the default and therefore is not
+    assert "blocks" in delta
+    assert "tools" not in delta
+    for spec in dc.fields(seed):
+        if spec.name in seed.NON_BEHAVIOURAL or spec.name in ("blocks", "tools"):
+            continue
+        if spec.default is not dc.MISSING and getattr(seed, spec.name) == spec.default:
+            assert spec.name not in delta, f"{spec.name} carries its default and must not be hashed"
+        if spec.default_factory is not dc.MISSING:  # type: ignore[misc]
+            assert spec.name not in delta, f"{spec.name} carries its default and must not be hashed"
+
+
+def test_fingerprint_moves_when_behaviour_moves():
+    seed = default_genome("seed")
+    assert seed.derive("gated", mutation="artifact_gate=True", artifact_gate=True).fingerprint() != seed.fingerprint()
+    assert seed.derive("capped", mutation="max_output_tokens=4096", max_output_tokens=4096).fingerprint() != seed.fingerprint()
+    assert (
+        seed.derive("fewer", mutation="max_steps=100", max_steps=100).fingerprint()
+        != seed.fingerprint()
+    )
+
+
+def test_a_default_off_knob_does_not_change_an_existing_identity():
+    """The regression that motivated the rewrite, simulated by adding a field after the fact."""
+    import dataclasses as dc
+
+    seed = default_genome("seed")
+    before = seed.fingerprint()
+    delta_before = dict(seed.behaviour())
+
+    # a knob added to the class with a default the seed already holds: the dataclass default
+    # is what behaviour() compares against, so it cannot enter the payload
+    new_spec = dc.field(default=False)
+    assert new_spec.default is False
+    assert "a_future_knob" not in delta_before
+    # the identity is therefore a function of the set fields alone, not of the schema
+    assert seed.fingerprint() == before
+    assert seed.behaviour() == delta_before

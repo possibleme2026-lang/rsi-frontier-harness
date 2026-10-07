@@ -1,4 +1,4 @@
-﻿"""The harness as a genome.
+"""The harness as a genome.
 
 The harness is not a file that a human edits between runs.  It is a value: an
 ordered list of named prompt blocks, an enabled tool set, and the numeric policy
@@ -13,6 +13,7 @@ Two consequences follow, and both are load-bearing for the RSI loop:
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass, field, replace
@@ -145,32 +146,42 @@ class Genome:
     def system_prompt(self) -> str:
         return prompts.render(self.blocks, extra=self.extra_prompt or None)
 
+    #: Fields that describe a genome's provenance rather than its behaviour, and so are
+    #: deliberately outside the fingerprint.
+    NON_BEHAVIOURAL = ("id", "lineage", "notes")
+
+    def behaviour(self) -> dict:
+        """The stored fields that differ from the class defaults.
+
+        The fingerprint hashes *this* rather than the whole record, and the distinction is
+        not cosmetic.  A fingerprint is meant to be a stable name for a configuration, so
+        a run recorded under it can still be identified later.  Hashing every field broke
+        that the first time a new knob was added: the new field appears in every genome's
+        payload, so every historical hash changes and every recorded trial becomes
+        unattributable -- which is exactly the failure the fingerprint exists to prevent.
+        Hashing the delta from the defaults means adding a knob that is off by default
+        leaves every existing genome's identity untouched, while any genome that turns it
+        on is a new configuration and gets a new name.
+        """
+        delta: dict[str, object] = {}
+        for spec in dataclasses.fields(self):
+            if spec.name in self.NON_BEHAVIOURAL:
+                continue
+            value = getattr(self, spec.name)
+            if spec.default is not dataclasses.MISSING:
+                default = spec.default
+            elif spec.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                default = spec.default_factory()  # type: ignore[misc]
+            else:
+                default = None
+            if value != default:
+                delta[spec.name] = list(value) if isinstance(value, tuple) else value
+        return delta
+
     def fingerprint(self) -> str:
-        payload = {
-            "blocks": list(self.blocks),
-            "tools": list(self.tools),
-            "max_steps": self.max_steps,
-            "steps_from_declared_budget": self.steps_from_declared_budget,
-            "step_budget_reference_s": self.step_budget_reference_s,
-            "obs_head_chars": self.obs_head_chars,
-            "obs_tail_chars": self.obs_tail_chars,
-            "temperature": self.temperature,
-            "context_budget_tokens": self.context_budget_tokens,
-            "compaction": self.compaction,
-            "keep_recent_tool_results": self.keep_recent_tool_results,
-            "nudge_text_only": self.nudge_text_only,
-            "bash_timeout_s": self.bash_timeout_s,
-            "submit_guard": self.submit_guard,
-            "max_output_tokens": self.max_output_tokens,
-            "extra_prompt": self.extra_prompt,
-            "retry_model_errors": self.retry_model_errors,
-            "truncation_recovery": self.truncation_recovery,
-            "command_not_found_hint": self.command_not_found_hint,
-            "step_countdown": self.step_countdown,
-            "artifact_gate": self.artifact_gate,
-        }
-        blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+        blob = json.dumps(self.behaviour(), sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
 
     # ------------------------------------------------------------------- i/o
     def to_dict(self) -> dict:

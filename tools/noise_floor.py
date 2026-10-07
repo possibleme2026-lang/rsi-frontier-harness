@@ -5,8 +5,11 @@ argue that a change won or lost it.  This collects every task that has been run 
 three times under the same genome and reports the spread, which sets the width of the error
 bar the write-up has to respect.
 
-Runs are grouped by (task, genome fingerprint).  Fingerprint is the right key rather than
-genome id, because two ids can name the same configuration.
+Runs are grouped by (task, genome id).  The id is the right key: it is recorded on every
+trial and is stable, whereas a fingerprint only names a configuration for as long as the
+fingerprint function itself does not change -- and it did change once, when a knob was
+added, which silently re-hashed every genome recorded before that.  A cell that both passed
+and failed under one id cannot be cited as won or lost by a single run.
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ def main() -> int:
             trial = json.loads(path.read_text(encoding="utf-8"))
             if trial["status"] not in ("success", "failure"):
                 continue
-            groups[(trial["id"], trial.get("genome_fingerprint") or "?")].append(trial)
+            groups[(trial["id"], trial.get("genome_id") or "?")].append(trial)
 
     repeated = {k: v for k, v in groups.items() if len(v) >= args.min_runs}
     if not repeated:
@@ -41,7 +44,7 @@ def main() -> int:
 
     print(f"{'task':<46}{'fp':>18}{'n':>4}{'pass':>7}{'credit':>9}  verdicts")
     unstable = 0
-    for (task, fingerprint), trials in sorted(repeated.items(), key=lambda kv: kv[0][0]):
+    for (task, genome_id), trials in sorted(repeated.items(), key=lambda kv: kv[0][0]):
         n = len(trials)
         passes = sum(1 for t in trials if t["status"] == "success")
         credits = []
@@ -58,7 +61,7 @@ def main() -> int:
         if 0 < passes < n:
             unstable += 1
         print(
-            f"{task.split('/')[-1][:44]:<46}{fingerprint:>18}{n:>4}"
+            f"{task.split('/')[-1][:44]:<46}{genome_id:>18}{n:>4}"
             f"{passes:>6}/{n:<3}{sum(credits) / n:>9.3f}  "
             + ", ".join(f"{k}x{v}" for k, v in sorted(seen.items()))
         )
@@ -73,3 +76,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
