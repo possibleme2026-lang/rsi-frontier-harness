@@ -153,3 +153,17 @@ Kept in one place, because each of them changes what a number means:
 7. Which step budget a genome uses is a design choice, not a property of the eval, so
    every result states the genome's policy rather than assuming one. A run with
    `max_steps = 60` and no policy is the strictest configuration measured here.
+8. **Trials recorded before this commit carry a stale `genome_fingerprint`.** The
+   fingerprint used to hash a hard-coded list of every genome field, so adding a knob
+   changed the hash of every genome ever recorded and the old names no longer resolve.
+   Trials written since the fix carry a fingerprint derived from the delta against the
+   dataclass defaults, which a new default-off knob cannot disturb. Nothing was re-run:
+   the trials themselves, their verdicts and their costs are untouched, and every trial
+   records a stable `genome_id` alongside the fingerprint, which is what the analysis
+   tools key on. The break is evidence for the fix rather than something to work around.
+9. **Cell-level outcomes are noisy and are reported as such.** Of 26 cells run twice or
+   more under one genome id, five have both passed and failed — including
+   `sanitize-git-repo` (1 of 3 under `gen1`) and both of the assertion cells `anko` and
+   `fastapi` (1 of 2 each). A single run therefore cannot show that a change won or lost
+   one of those cells, and the write-up states which claims survive that and which do not.
+   `tools/noise_floor.py` prints the table.
