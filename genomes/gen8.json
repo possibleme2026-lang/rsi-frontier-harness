@@ -1,0 +1,41 @@
+{
+  "id": "gen8",
+  "blocks": [
+    "role.engineer",
+    "method.loop",
+    "tools.bash",
+    "errors.recover",
+    "budget.brevity",
+    "submit.contract"
+  ],
+  "tools": [
+    "bash",
+    "read_file",
+    "write_file",
+    "submit"
+  ],
+  "max_steps": 60,
+  "steps_from_declared_budget": false,
+  "step_budget_reference_s": 1800.0,
+  "obs_head_chars": 4000,
+  "obs_tail_chars": 3000,
+  "temperature": 0.0,
+  "context_budget_tokens": 96000,
+  "compaction": "truncate",
+  "keep_recent_tool_results": 12,
+  "nudge_text_only": 2,
+  "bash_timeout_s": 240.0,
+  "submit_guard": "none",
+  "max_output_tokens": 0,
+  "extra_prompt": "",
+  "retry_model_errors": 2,
+  "truncation_recovery": true,
+  "command_not_found_hint": true,
+  "step_countdown": false,
+  "artifact_gate": true,
+  "lineage": [
+    "gen1:seed-from-gen0-probe"
+  ],
+  "notes": "gen7 without the protocol blocks and without the countdown: mechanism only, to isolate the prompt text that multiplied deliberation",
+  "fingerprint": "6291eb841d7e1f95"
+}

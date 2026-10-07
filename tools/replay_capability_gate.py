@@ -29,12 +29,24 @@ PAIRS = [
     ("gen1 (deepswe-9)", "runs/deepswe-9", "gen5", "runs/gen5-full"),
 ]
 
+#: Runs that exist but whose verifier detail has to come from the sibling reward.json,
+#: because they were paid for before the report was being copied into trial.json.
+FALLBACK_DETAIL = True
+
 
 def load(run: str, genome_id: str | None) -> Outcome:
     run_dir = ROOT / run
     results = []
     for path in sorted(run_dir.glob("trials/*/trial.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
+        detail = payload.get("verifier_detail") or {}
+        if not detail and FALLBACK_DETAIL:
+            raw = path.parent / "reward.json"
+            if raw.is_file():
+                try:
+                    detail = json.loads(raw.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    detail = {}
         results.append(
             TrialResult(
                 task_id=payload["id"],
@@ -50,7 +62,7 @@ def load(run: str, genome_id: str | None) -> Outcome:
                 exit_reason=payload.get("exit_reason", ""),
                 error=payload.get("error"),
                 artifacts=path.parent,
-                extra={"verifier_detail": payload.get("verifier_detail") or {}},
+                extra={"verifier_detail": detail},
             )
         )
     library = GenomeLibrary(ROOT / "genomes")
@@ -64,10 +76,23 @@ def load(run: str, genome_id: str | None) -> Outcome:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--z", type=float, default=2.0)
+    parser.add_argument("--left", help="run directory to treat as the incumbent")
+    parser.add_argument("--right", help="run directory to treat as the candidate")
+    parser.add_argument("--left-genome", default=None)
+    parser.add_argument("--right-genome", default=None)
     args = parser.parse_args()
 
-    for label, left_run, right_genome, right_run in PAIRS:
+    if args.left or args.right:
+        if not (args.left and args.right):
+            parser.error("--left and --right must be given together")
+        pairs = [(args.left, args.left, args.right_genome or args.right, args.right)]
+    else:
+        pairs = PAIRS
+
+    for label, left_run, right_genome, right_run in pairs:
         if not (ROOT / right_run).is_dir():
+            if args.left:
+                print(f"{right_run}: no such run")
             continue
         incumbent = load(left_run, None)
         child = load(right_run, right_genome)
