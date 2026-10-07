@@ -510,6 +510,116 @@ free: over the whole suite it buys three cells and sells three, for 20% more mon
 (§2.1). The reported 30-task number is the 60-step harness, and the reason is
 measurement, not preference.
 
+### 5.1 The failures are not a budget finding — five of seven never wrote the deliverable
+
+The zero-byte finding above generalises, and correcting it changes what the fix should be.
+`tools/empty_artifact.py`:
+
+| | repository tasks (diff is the deliverable) |
+| --- | ---: |
+| submitted nothing at all | **3 of 7** |
+| submitted only scratch files (< 4 KB) | **2 of 7** |
+| made a real attempt | 2 of 7 |
+
+`expr` submitted 1,146 bytes and `arktype` 1,475 bytes — in both cases a file under
+`scratch/`, with the product source untouched. So **five of the seven repository failures
+are cases where the agent explored, reasoned and then submitted without ever editing the
+code it was asked to fix.** Not a step-count problem: `meriyah` produced nothing at both 60
+and 100 steps, and `katex` produced nothing at 55 steps but a 124 KB passing patch at 100.
+
+A caution that this section had to correct in itself. `submitted_bytes` is 0 for all five
+terminal-bench failures too, and the obvious reading — the same failure mode on the other
+half — is **wrong**: terminal-bench grades container state in place and defines no collect
+step, so its artifact is empty by construction. Only the repository half can be judged this
+way, and only that half is counted above. The harness's artifact gate makes the same
+distinction at runtime, and stays silent on a task that is not graded on a diff.
+
+### 5.2 The binary verdict was hiding six near misses
+
+Every repository suite reports how far a patch got, and the harness has been keeping that
+report beside the verdict all along. `tools/near_miss.py` over every run in the repo: of 28
+failures carrying a report, **6 had nonzero required-test credit and 5 were above 0.9**,
+four of them with the existing suite fully green.
+
+| cell | required tests | existing suite | read as |
+| --- | ---: | ---: | --- |
+| python-statemachine (a `gen0` run) | **70 / 72** | 1.000 | a failure, identical to 0/72 |
+| httpx (three separate runs) | 121 / 122 | 1.000 | a failure |
+| fastapi (`gen6`) | 129 / 137 | 1.000 | a failure |
+| scc | 26 / 31 | 0.983 | a failure |
+
+This matters for the evolution loop more than for the report, and §6.1 changes the loop
+accordingly: a gate that only sees pass or fail cannot distinguish "wrote nothing" from
+"wrote almost all of it", so on a six-task evolve split it could essentially only ever
+adopt cost improvements.
+
+### 5.3 A/B: the artifact gate and the protocol blocks, over the same nine cells
+
+`gen7` adds five mechanisms and three prompt blocks to `gen1` and is otherwise identical.
+Both were run on all nine repository tasks (`runs/gen7-deepswe`, `runs/deepswe-9`).
+
+| task | `gen1` | `gen7` | what the transcript says |
+| --- | ---: | ---: | --- |
+| expr-try-catch-errors | 0.00 | **1.00** | gate fired 6×, patch 1.2 KB → 18.7 KB |
+| httpx-multipart-response-parsing | 0.99 | **1.00** | the tab/space unfolding rule, finally |
+| arktype-json-schema-refs-dependencies | 0.00 | 0.88 | was scratch-only, now 22/25 |
+| scc-bounded-memory-spilling | 0.82 | 0.90 | existing-suite damage reduced |
+| python-statemachine-state-data-scoping | 0.00 | 0.61 | 44/72, was 0/72 |
+| katex-multicolumn-array-spans | 0.00 | 0.00 | wall clock again, at step 57 |
+| meriyah-explicit-resource-declarations | 0.00 | 0.00 | still no product edit |
+| anko-typed-variable-bindings | **1.00** | 0.00 | 7× deliberation, dead on the wall clock |
+| fastapi-deprecation-response-headers | **1.00** | 0.89 | submitted early, 129/137 |
+| **passes** | **2/9** | **2/9** | |
+| **graded credit** | **3.814** | **5.285** | **+38.6%** |
+
+| axis | `gen1` | `gen7` | |
+| --- | ---: | ---: | --- |
+| graded credit | 3.814 | 5.285 | **+38.6%** |
+| spend | $1.0627 | $1.1119 | **+4.6%** |
+| completion tokens | 1,126,827 | 1,369,440 | +21.5% |
+| agent minutes | 123.9 | 215.6 | **+74.0%** |
+| credit per dollar | 3.59 | 4.75 | +32% |
+
+**The pass count is a tie and the harness is materially better.** Two cells converted, two
+were lost, and four moved substantially on the graded fraction. Capability improved 38.6%
+for 4.6% more money — but at 74% more wall clock, and that is precisely what killed `anko`
+and `katex`, both of which now end on the time limit rather than the step limit.
+
+The two losses are diagnoses, not shrugs:
+
+- **`fastapi` — the countdown caused a premature submit.** The endgame notice appears at
+  message positions 105, 107, 109 … 119 and the `submit` call is at 120. `gen1` needs the
+  full 60 steps on this cell and ends on the step limit; `gen7` was told to stop at step 48
+  and stopped, at 129 of 137 tests. Telling an agent to wrap up is advice about the budget,
+  and it is wrong advice when the budget is not the binding constraint.
+- **`anko` — the prompt blocks multiplied deliberation 7×.** 33,137 completion tokens over
+  60 steps became 231,570 over 45, median 250 → 1,821 per step with single steps at 24,416.
+  The per-step profile (`tools/deliberation_profile.py`) ramps from ~200 tokens to ~8,500
+  across the episode rather than jumping when the gate fires, which points at the added
+  protocol text licensing in-head analysis. Where the agent had been flailing the gate
+  *saves* work — `expr` used 7.5× **fewer** completion tokens and now passes — and where it
+  was already efficient the same text makes it over-think.
+
+So the next edit is not "more capability": it is to keep the gate and bound the turn. The
+countdown comes out (measured cause of one loss) and the per-turn output is capped, which
+`truncation_recovery` makes safe because a truncated turn is answered with a directive
+rather than with silence — the mechanism whose absence made the `gen5` cap experiment fail.
+
+A note on the gate itself, because "it fired" and "it worked" are different claims.
+`tools/gate_firings.py` over the nine `gen7` episodes:
+
+| | |
+| --- | ---: |
+| cells where the gate fired at least once | **9 of 9** |
+| folds per cell | 1–6 |
+| cells where it fired and the diff was still scratch-sized | 2 (`meriyah` 1,533 B, `katex` 564 B) |
+
+So the gate reached every container — including `meriyah` and `katex`, which had produced
+no product edit at any budget — and in those two cells the agent read it four times and
+kept investigating. That is a limit of the mechanism as written and it is the honest
+boundary of the `expr` result: the gate converts a cell that was *nearly* ready to act, and
+does not by itself rescue a cell where the agent has not understood the change yet.
+
 ## 6. Evolution
 
 The loop (`rsih evolve`) proposes descriptor mutations and free-text prompt rules,
