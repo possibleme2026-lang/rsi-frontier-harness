@@ -81,6 +81,11 @@ token profile, which is provider-reported on both sides and is in §4.
 | total spend on the 30 | **$1.77** | $69.37 | $62.41 | $43.79 | $62.26 | $16.72 | $348.40 |
 | effective cost per pass | **$0.098** | $3.468 | $3.285 | $2.433 | $3.459 | $1.045 | $18.337 |
 
+Both sides of the cost row are token-derived and use the **first-cold** convention
+(§4.1). Ours is $1.7793 over the 30 cells by that convention — $0.0988 per pass — against
+$1.7718 / $0.0984 by the plain one; the table quotes the plain one and the difference is
+0.42%.
+
 | suite | measured | pass rate | spend |
 | --- | ---: | ---: | ---: |
 | `terminal-bench/*` (21) | 21 | 16/21 = 76.2% | $0.71 |
@@ -244,6 +249,67 @@ pulled and measured separately and **passes** (§2 counts it). `dna-insert` and
 failures, not verifier-setup failures.
 
 ## 4. Where the money goes
+
+### 4.1 How the number is computed
+
+Nothing here is billed-and-read-back; every dollar figure is derived from the token counts
+the provider returns on each call, times a declared rate card. The chain is:
+
+```
+provider usage per call  ->  RateCard.price()  ->  CostLedger  ->  trial.json  ->  sums
+  prompt_tokens             fresh  = prompt - cached            cost_usd
+  cached_tokens             cost   = fresh*0.28 + cached*0.028
+  completion_tokens                 + cache_write*0.28 + completion*0.42   (per 1M)
+  reasoning_tokens          (reasoning is inside completion, not beside it)
+```
+
+Rates come from `pricing.json`, which records its own source: `0.28 / 0.28 / 0.028 / 0.42`
+per 1M fresh input / cache write / cache read / output, *declared by the operator* for the
+`tierflow.cn` endpoint (DeepSeek flash-tier shape, cache read = 10% of fresh input). They
+were not read off an invoice, and the file says so.
+
+Four rules make the accounting auditable:
+
+1. **Missing stays missing.** A call with no usage payload contributes `None`, never zero,
+   and if any call in an episode is missing usage the episode's cost is `None` rather
+   than a partial sum (`test_cost_ledger_refuses_partial_sum`). Failed attempts — the 429
+   retries that appear in the call log with `error` and `sleep_s` and no usage — are
+   logged but not billed.
+2. **The convention is named.** `cost_usd` prices cache reads at the cache rate from the
+   first call on; `cost_first_cold_usd` re-prices the first call's cache reads at the
+   fresh-input rate, so a harness that warms the cache on turn one pays for the warm-up.
+   The published baselines use the second convention, and `tools/cost_conventions.py`
+   measures the gap on our side: **$1.7718 → $1.7793 over 30 cells, +0.42%**. §2's headline
+   quotes $1.7718 (`cost_usd`); the conservative figure is **$0.0988 per pass**.
+3. **Passes are the benchmark's definition.** `effective_cost_per_pass` is total cost over
+   all measured cells divided by passes, with `infra_invalid` cells excluded from both
+   numerator and denominator.
+4. **It can be recomputed from the raw log.** `tools/verify_cost.py <trial>` re-derives
+   the trial's cost from `llm-calls.jsonl` alone. On
+   `runs/deepswe-9/trials/anko-typed-variable-bindings`:
+
+```
+component               tokens   rate/1M        usd
+fresh input             59,384     0.280    0.01663
+cached input         1,700,224     0.028    0.04761
+output                  33,137     0.420    0.01392
+recomputed                                  0.07815
+trial.json cost_usd            : 0.07815133199999999
+trial.json cost_first_cold_usd : 0.07844163599999998
+reasoning tokens               : 26,177  (79.0% of completion)
+```
+
+Two things that audit makes visible, and both matter:
+
+- **`cache_write_tokens` is `null` on this endpoint**, so the `0.28` write rate is never
+  applied in practice. DeepSeek-style implicit caching does not charge a separate write,
+  so this is consistent — but it is an assumption the card encodes, not something the
+  measurements confirm.
+- **Reasoning is 79% of completion and is billed at the output rate.** That is the single
+  most important fact about this harness's cost, and §2.1 is what happens when you try to
+  cap it.
+
+### 4.2 Where the 30-task total goes
 
 `tools/cost_rollup.py` splits those $1.7718 across all 30 measured cells by what the
 provider actually bills:

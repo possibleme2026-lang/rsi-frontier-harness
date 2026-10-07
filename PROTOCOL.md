@@ -87,7 +87,15 @@ which is how a pass that does not reproduce gets found rather than averaged away
 & $py tools/baseline_matrix.py --run runs/gen0-probe-g0-gen0
 & $py tools/deepswe_table.py runs/deepswe-9
 & $py tools/published_provenance.py     # what the baseline file actually contains
+& $py tools/cost_conventions.py runs/gen0-probe-g0-gen0 runs/holdout-gen1 runs/close-polyglot runs/deepswe-9
+& $py tools/verify_cost.py runs/deepswe-9/trials/anko-typed-variable-bindings
 ```
+
+Every dollar figure is the provider-reported token counts times the declared card in
+`pricing.json` — no invoice is read, and the card states that it is operator-declared.
+`verify_cost.py` re-derives one trial's spend from `llm-calls.jsonl` alone;
+`cost_conventions.py` reports both `cost_usd` and `cost_first_cold_usd`, the latter being
+the convention the published baselines use. Quote the convention with the number.
 
 ## 5b. What was measured here and what was not
 
