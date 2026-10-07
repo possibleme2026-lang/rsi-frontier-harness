@@ -105,12 +105,12 @@ class Episode:
         return data
 
 
-def _env_note(task: Task, genome: Genome) -> str:
+def _env_note(task: Task, genome: Genome, step_cap: int) -> str:
     return (
         "# Environment\n"
         f"A Linux container, running as root. Working directory: {task.workdir}.\n"
         f"The task's time limit is {task.agent_timeout_s:.0f} seconds and you have at most "
-        f"{genome.max_steps} tool calls. Only the filesystem of this container counts.\n"
+        f"{step_cap} tool calls. Only the filesystem of this container counts.\n"
     )
 
 
@@ -218,9 +218,10 @@ class AgentLoop:
             started_at=time.time(),
             ledger=ledger,
         )
+        step_cap = genome.effective_max_steps(task.agent_timeout_declared_s)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": genome.system_prompt()},
-            {"role": "user", "content": f"# Task\n{task.instruction.strip()}\n\n{_env_note(task, genome)}"},
+            {"role": "user", "content": f"# Task\n{task.instruction.strip()}\n\n{_env_note(task, genome, step_cap)}"},
         ]
         episode.messages = messages
         schemas = tool_lib.schemas(genome.tools)
@@ -228,7 +229,7 @@ class AgentLoop:
         submit_rejected = False
         loop_started = time.time()
 
-        for step_index in range(genome.max_steps):
+        for step_index in range(step_cap):
             if self.deadline_s and (time.time() - loop_started) > self.deadline_s:
                 episode.exit_reason = "wall_clock_budget"
                 break

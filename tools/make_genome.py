@@ -1,4 +1,4 @@
-﻿"""Write a single-mutation genome next to the library's entries.
+"""Write a single-mutation genome next to the library's entries.
 
 The evolution loop reaches a mutation through a sampled proposal; a controlled A/B
 needs the same edit applied deliberately, with nothing else changed, so the measured
@@ -29,9 +29,22 @@ def main() -> int:
     payload = genome.to_dict()
     for edit in args.edits:
         key, _, raw = edit.partition("=")
+        operator = ""
+        if key.endswith(("+", "-")):
+            operator, key = key[-1], key[:-1]
         if key not in payload:
             raise SystemExit(f"unknown field {key!r}")
         current = payload[key]
+        if operator:
+            # list surgery: ``blocks+=verify.requirements`` / ``tools-=submit``
+            values = [part for part in raw.split(",") if part]
+            if not isinstance(current, list):
+                raise SystemExit(f"{key} is not a list")
+            if operator == "+":
+                payload[key] = current + [v for v in values if v not in current]
+            else:
+                payload[key] = [v for v in current if v not in values]
+            continue
         if isinstance(current, bool):
             value: object = raw.lower() in ("1", "true", "yes")
         elif isinstance(current, int) and not isinstance(current, bool):

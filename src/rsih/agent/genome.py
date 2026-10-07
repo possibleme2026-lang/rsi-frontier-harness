@@ -25,6 +25,19 @@ ALL_TOOLS = ("bash", "read_file", "write_file", "submit")
 COMPACTION_MODES = ("none", "truncate", "summarize")
 SUBMIT_GUARDS = ("none", "one_shot_reject")
 
+#: The step-budget policy below is expressed relative to a declared agent budget. The
+#: default reference is the *largest* budget any terminal-bench task in the frozen suite
+#: declares, so with the policy on and the reference left alone every terminal-bench cell
+#: keeps exactly the step cap the genome names and only the long-budget half of the suite
+#: is affected. Choosing it this way makes the policy's blast radius part of its
+#: definition rather than a guess; lowering it is a separate, measurable decision.
+REFERENCE_AGENT_SECONDS_DEFAULT = 1800.0
+#: Backwards-compatible alias used by the tests and the report.
+REFERENCE_AGENT_SECONDS = REFERENCE_AGENT_SECONDS_DEFAULT
+#: A long declared budget buys more steps, but not without limit: past this multiple
+#: the wall clock, not the step cap, is meant to be the binding constraint.
+STEP_BUDGET_CEILING = 4.0
+
 
 @dataclass(frozen=True)
 class Genome:
@@ -32,6 +45,14 @@ class Genome:
     blocks: tuple[str, ...]
     tools: tuple[str, ...] = ALL_TOOLS
     max_steps: int = 60
+    #: When on, the step cap scales with the budget the *task* declares, because a task
+    #: that says "you have 90 minutes" is not the same size of job as one that says
+    #: "you have 15". Off by default so that `max_steps` keeps its literal meaning.
+    steps_from_declared_budget: bool = False
+    #: The declared budget that `max_steps` is exactly enough for, when the policy above
+    #: is on. Lowering it is how the harness stops treating a 15-minute task and a
+    #: 90-minute task as the same size of job.
+    step_budget_reference_s: float = REFERENCE_AGENT_SECONDS_DEFAULT
     obs_head_chars: int = 4000
     obs_tail_chars: int = 3000
     temperature: float = 0.0
@@ -74,6 +95,22 @@ class Genome:
             raise ValueError(f"unknown prompt block(s): {unknown_blocks}")
 
     # -------------------------------------------------------------- rendering
+    def effective_max_steps(self, declared_seconds: float | None) -> int:
+        """The step cap to actually use for a task with this declared budget.
+
+        With the policy off this is `max_steps`, so no existing genome changes
+        meaning.  With it on, a task declaring the reference budget is also unchanged
+        and a longer one scales up to `STEP_BUDGET_CEILING` times the cap.  The point
+        is that the harness stops guessing how big a job is from a single global
+        number and starts using the envelope the task itself publishes.
+        """
+        if not self.steps_from_declared_budget or not declared_seconds:
+            return self.max_steps
+        reference = self.step_budget_reference_s or REFERENCE_AGENT_SECONDS_DEFAULT
+        ratio = declared_seconds / reference
+        ratio = min(max(ratio, 1.0), STEP_BUDGET_CEILING)
+        return int(round(self.max_steps * ratio))
+
     def system_prompt(self) -> str:
         return prompts.render(self.blocks, extra=self.extra_prompt or None)
 
@@ -82,6 +119,8 @@ class Genome:
             "blocks": list(self.blocks),
             "tools": list(self.tools),
             "max_steps": self.max_steps,
+            "steps_from_declared_budget": self.steps_from_declared_budget,
+            "step_budget_reference_s": self.step_budget_reference_s,
             "obs_head_chars": self.obs_head_chars,
             "obs_tail_chars": self.obs_tail_chars,
             "temperature": self.temperature,
@@ -104,6 +143,8 @@ class Genome:
             "blocks": list(self.blocks),
             "tools": list(self.tools),
             "max_steps": self.max_steps,
+            "steps_from_declared_budget": self.steps_from_declared_budget,
+            "step_budget_reference_s": self.step_budget_reference_s,
             "obs_head_chars": self.obs_head_chars,
             "obs_tail_chars": self.obs_tail_chars,
             "temperature": self.temperature,
@@ -128,6 +169,8 @@ class Genome:
             "blocks",
             "tools",
             "max_steps",
+            "steps_from_declared_budget",
+            "step_budget_reference_s",
             "obs_head_chars",
             "obs_tail_chars",
             "temperature",

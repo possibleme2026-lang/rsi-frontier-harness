@@ -58,15 +58,37 @@ Holdout tasks are never shown to the analyst and never used for acceptance:
 The holdout verdict is the only pass-rate comparison that can support a claim about
 self-improvement, because the seed was selected on the evolve set.
 
-## 4. Cost anatomy
+## 4. Full-suite runs and the step budget
+
+The step cap is a genome field, and the harness can instead take its step budget from
+the envelope each task publishes. `steps_from_declared_budget` with
+`step_budget_reference_s = R` gives a task declaring `D` seconds
+`max_steps * clamp(D / R, 1, 4)` steps. `R = 1800` (the default) is the largest budget
+any terminal-bench task declares, so it leaves that half byte-for-byte unchanged;
+`R = 600` gives the 900 s tasks 90 steps, the 1200 s tasks 120, the 1800 s task 180 and
+the 5400 s DeepSWE tasks the 4× ceiling.
+
+```powershell
+# a whole-suite number on one genome, with every task at its own declared budget
+$env:RSIH_AGENT_TIMEOUT_CAP = "2100"
+& $py -m rsih run --run-id gen4-full --genome gen4 --concurrency 3
+& $py tools/coverage.py runs/gen4-full --label "RSIH gen4"
+& $py tools/cost_rollup.py runs/gen4-full
+```
+
+`tools/task_stability.py <task>` prints every trial recorded for one task across runs,
+which is how a pass that does not reproduce gets found rather than averaged away.
+
+## 5. Cost anatomy
 
 ```powershell
 & $py tools/cost_anatomy.py runs/gen0-probe-g0-gen0
-& $py tools/baseline_family.py datacurve
+& $py tools/baseline_family.py all
 & $py tools/baseline_matrix.py --run runs/gen0-probe-g0-gen0
+& $py tools/deepswe_table.py runs/deepswe-9
 ```
 
-## 5. Rate limits
+## 6. Rate limits
 
 The endpoint rate-limits per client IP. Two rules keep that from becoming a result:
 
@@ -77,7 +99,7 @@ The endpoint rate-limits per client IP. Two rules keep that from becoming a resu
   `run_trials`, never scored. `runs/_discarded-*` hold runs from before that rule
   existed and are not quoted anywhere.
 
-## 6. Known deviations from the published run
+## 7. Known deviations from the published run
 
 Kept in one place, because each of them changes what a number means:
 
@@ -86,7 +108,11 @@ Kept in one place, because each of them changes what a number means:
    the published run applied a runtime-wide allowlist. `kv-store-grpc` depends on this.
 3. No `--storage-opt` quota.
 4. The 3 h DeepSWE agent budget is capped locally (`RSIH_AGENT_TIMEOUT_CAP`, recorded
-   per trial), so long-horizon numbers are a lower bound.
+   per trial), so long-horizon numbers are a lower bound. The per-trial record
+   distinguishes the declared budget from the capped one.
 5. DeepSWE's explicit submit step is replaced by the harness auto-committing the tree.
 6. The model is DeepSeek-V4.1-Flash at the declared rate card, not the baselines'
    Kimi K3, so cost-per-pass is a cross-price comparison and is labelled as such.
+7. Which step budget a genome uses is a design choice, not a property of the eval, so
+   every result states the genome's policy rather than assuming one. A run with
+   `max_steps = 60` and no policy is the strictest configuration measured here.

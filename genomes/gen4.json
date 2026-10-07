@@ -1,0 +1,36 @@
+{
+  "id": "gen4",
+  "blocks": [
+    "role.engineer",
+    "method.loop",
+    "tools.bash",
+    "errors.recover",
+    "budget.brevity",
+    "submit.contract"
+  ],
+  "tools": [
+    "bash",
+    "read_file",
+    "write_file",
+    "submit"
+  ],
+  "max_steps": 60,
+  "steps_from_declared_budget": true,
+  "step_budget_reference_s": 600.0,
+  "obs_head_chars": 4000,
+  "obs_tail_chars": 3000,
+  "temperature": 0.0,
+  "context_budget_tokens": 96000,
+  "compaction": "truncate",
+  "keep_recent_tool_results": 12,
+  "nudge_text_only": 2,
+  "bash_timeout_s": 240.0,
+  "submit_guard": "none",
+  "max_output_tokens": 0,
+  "extra_prompt": "",
+  "lineage": [
+    "gen1:seed-from-gen0-probe"
+  ],
+  "notes": "seed for the RSI loop: identical content to the gen0 probe harness, with max_output_tokens made explicit (0 = provider default) after the schema gained that field",
+  "fingerprint": "0a0aa82dc1321c2a"
+}

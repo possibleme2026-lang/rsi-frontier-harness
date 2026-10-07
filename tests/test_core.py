@@ -13,7 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from rsih.agent.genome import ALL_TOOLS, Genome, GenomeLibrary, default_genome
+from rsih.agent.genome import (
+    ALL_TOOLS,
+    REFERENCE_AGENT_SECONDS,
+    STEP_BUDGET_CEILING,
+    Genome,
+    GenomeLibrary,
+    default_genome,
+)
 from rsih.bench.sandbox import CWD_SENTINEL, EXIT_SENTINEL, DockerSandbox
 from rsih.llm.pricing import CostLedger, RateCard, Usage, rate_card
 from rsih.rsi.evolve import Outcome, paired_decision, split_tasks
@@ -84,6 +91,36 @@ def test_genome_round_trip(tmp_path: Path):
     assert loaded.fingerprint() == genome.fingerprint()
     assert loaded.max_steps == 42
     assert loaded.lineage[-1].endswith("test")
+
+
+def test_step_budget_policy_is_inert_inside_terminal_bench():
+    """The policy's blast radius is part of its definition, so pin it.
+
+    Every terminal-bench cell in the frozen suite declares at most
+    ``REFERENCE_AGENT_SECONDS``, so turning the policy on must leave all of them at the
+    genome's literal cap -- otherwise a result measured with it off would not carry
+    over to a run with it on.
+    """
+    genome = default_genome("genPolicy").derive("genPolicyOn", mutation="test",
+                                                steps_from_declared_budget=True)
+    assert genome.effective_max_steps(REFERENCE_AGENT_SECONDS) == genome.max_steps
+    for declared in (60.0, 600.0, 900.0, 1200.0, 1800.0):
+        assert genome.effective_max_steps(declared) == genome.max_steps
+    # a long declared budget buys steps, multiplicatively and with a ceiling
+    assert genome.effective_max_steps(REFERENCE_AGENT_SECONDS * 3) == genome.max_steps * 3
+    assert (
+        genome.effective_max_steps(REFERENCE_AGENT_SECONDS * 100)
+        == genome.max_steps * int(STEP_BUDGET_CEILING)
+    )
+    # off by default, and unchanged for a genome that never opted in
+    assert default_genome().effective_max_steps(5400.0) == default_genome().max_steps
+    assert genome.effective_max_steps(None) == genome.max_steps
+
+
+def test_step_budget_policy_changes_the_fingerprint():
+    a = default_genome("genA")
+    b = a.derive("genB", mutation="test", steps_from_declared_budget=True)
+    assert a.fingerprint() != b.fingerprint()
 
 
 def test_system_prompt_includes_extra_text():

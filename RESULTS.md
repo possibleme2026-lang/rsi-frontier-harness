@@ -59,6 +59,116 @@ $0.098 per pass (§5 shows the probe). That is the shape of the remaining work: 
 mutations are not hypothetical, they are entries in `rsih.rsi.mutators` with a hypothesis
 attached, and this one is worth one cell and costs one cent.
 
+### 2.1 The step budget is not the constraint; the output cap is
+
+Every terminal-bench failure in the 14-task sweep ended in `step_limit` or
+`wall_clock_budget`, so the obvious hypothesis is that the harness is starved of steps by
+its own 60-step cap and the eval would score higher if it used the budget each task
+actually declares. `tools/tb_budget_table.py` is that table:
+
+| task | declared | outcome | turns | exit |
+| --- | ---: | --- | ---: | --- |
+| dna-insert | 1800 s | failure | 38 | wall_clock_budget |
+| chess-best-move | 900 s | failure | **60** | **step_limit** |
+| gcode-to-text | 900 s | failure | **60** | **step_limit** |
+| largest-eigenval | 900 s | failure | **60** | **step_limit** |
+| extract-elf | 900 s | failure | 36 | wall_clock_budget |
+
+`steps_from_declared_budget` implements the hypothesis directly: a task declaring `D`
+seconds gets `max_steps * clamp(D / reference, 1, 4)` steps. With `reference = 1800` —
+the largest budget any terminal-bench task declares — **the terminal-bench half is
+unchanged by construction** and only DeepSWE moves (60 → 180). With `reference = 600` the
+900 s tasks get 90 steps, the 1200 s ones 120, `dna-insert` 180 and DeepSWE 240.
+
+`gen4` is that second setting, run over the four cells that were either step-limited or
+one test short. **It made things worse, on cells the seed passes:**
+
+| task | `gen1` (60 steps, no output cap) | `gen4` (declared budget) |
+| --- | --- | --- |
+| anko-typed-variable-bindings | **success**, 60 turns | failure, 124 turns |
+| fastapi-deprecation-response-headers | **success**, 60 turns | failure, 33 turns (`wall_clock_budget`) |
+| arktype-json-schema-refs-dependencies | failure, 60 turns | failure, 103 turns |
+| expr-try-catch-errors | failure, 53 turns | failure, 75 turns |
+
+The reason is in `runs/gen4-full/trials/fastapi-deprecation-response-headers/llm-calls.jsonl`,
+and it is not a mystery:
+
+```
+step31  latency_s=138.1  completion_tokens=21999  reasoning_tokens=21844
+step32  latency_s= 54.9  completion_tokens= 8338  reasoning_tokens= 8166
+```
+
+Given a longer horizon, the model does not take more actions; it takes *longer thoughts*.
+Two 22 k-token deliberation turns ate a minute and a half each and the episode died on the
+wall clock with 33 actions taken out of 240 available. The 60-step cap was not starving
+the harness — it was the only thing bounding a per-response cost blowup, which is the
+same conclusion the cost anatomy reaches from the other direction (output is 48% of
+spend). **`max_output_tokens = 0`, the provider default, is the hole** — so the obvious
+fix is to close it, and that fix was tested next and also failed.
+
+`gen5` = `gen4` + `max_output_tokens = 4096`, same four cells: **0 of 5 raw attempts
+passed**, and the episodes did not fail on the wall clock any more. They failed at turn
+18–51 with exit reason `text_only`: the cap truncates this model *mid-thought*, before it
+emits its tool calls, so the response contains no action at all and the loop's
+text-only nudge exhausts and ends the episode. Reasoning tokens are part of the
+completion here, not an add-on to it, which means the harness cannot bound deliberation
+per response without also bounding its ability to act.
+
+The three runs together locate the workable region precisely:
+
+| configuration | steps | output cap | cells | outcome |
+| --- | --- | ---: | ---: | --- |
+| `gen1` | 60 | none | 30 | **18/30, $1.7718, $0.0984/pass — the reported harness** |
+| `gen4` | up to 240 | none | 4 | worse: two cells it used to pass now fail |
+| `gen5` | up to 240 | 4096 | 5 | much worse: actions truncated away, `text_only` exits |
+| `gen6` | 100 | none | **30** | **18/30, $2.1216, $0.1179/pass** — same score, 20% more spend |
+
+`gen6` is the honest attempt at the hypothesis rather than a probe: a modest step
+increase plus a targeted self-verification block, uncapped output, run over the whole
+suite. It **trades cells rather than winning them** — `tools/ab_runs.py` against the
+reported harness:
+
+| | task | verdict change | turns | spend |
+| --- | --- | --- | --- | --- |
+| won | `katex-multicolumn-array-spans` | failure → **success** | 55 → 100 | $0.166 → $0.167 |
+| won | `python-statemachine-state-data-scoping` | failure → **success** | 60 → 100 | $0.142 → $0.147 |
+| won | `extract-elf` | failure → **success** | 36 → 17 | $0.091 → $0.063 |
+| lost | `anko-typed-variable-bindings` | success → failure | 60 → 86 | $0.078 → $0.209 |
+| lost | `fastapi-deprecation-response-headers` | success → failure | 60 → 100 | $0.128 → $0.201 |
+| lost | `sanitize-git-repo` | success → failure | 32 → 35 | $0.023 → $0.032 |
+
+Three cells bought at the price of three, for 20% more money, and the three losses cost
+**2.6×** what the three wins cost. The step cap was not starving the harness; it was
+bounding a per-response cost blowup, and the per-response cost cannot be bounded directly.
+That is the answer to the question §2 opened with, and it is a negative one.
+
+### 2.2 How stable is a cell?
+
+A pass measured once is not a property of the harness. Every cell that was deliberately
+re-run is collected by `tools/task_stability.py`, and the result is worth reporting
+because it is not uniform:
+
+| task | valid runs | passes | why the runs disagree |
+| --- | ---: | ---: | --- |
+| `sanitize-git-repo` | 9 | **2 (22%)** | **flaky at a fixed genome** — same mistake, same test |
+| `anko-typed-variable-bindings` | 4 | 1 | only at 60 steps; fails at 51 / 86 / 124 |
+| `fastapi-deprecation-response-headers` | 4 | 1 | only at 60 steps |
+| `katex-multicolumn-array-spans` | 4 | 2 | both passes at 100 steps |
+| `python-statemachine-state-data-scoping` | 5 | 1 | only pass is 100 steps + self-check |
+| `extract-elf` | 3 | 1 | only pass is `gen6` |
+| `polyglot-c-py` | 2 | 2 | never disagrees |
+| `httpx-multipart-response-parsing` | 3 | 0 | never disagrees — 121/122 every time |
+
+`sanitize-git-repo` is the one cell whose pass does not reproduce *at a fixed genome*, and
+it fails the same way almost every time: the agent decides the right fix for "secrets are
+in this repo" is to rewrite history with `git filter-branch`, then `git reflog expire` and
+`git gc --prune=now`, which destroys the commit the verifier's
+`test_no_other_files_changed` needs. Five of its seven failures are that one mistake. A
+conservative reading of the headline is therefore **17/30 = 56.7%**, and §7 says so rather
+than quietly keeping the flattering number. The rows below it are a different phenomenon —
+they are *configuration*-sensitive, not flaky, which is why the report quotes one genome
+per number and A/Bs the rest with `tools/ab_runs.py`.
+
 That is the claim this work supports, stated so it can be checked:
 
 - **Pass rate: inside the published band, not on top of it.** 18/30 ties `pi-responses`,
@@ -71,6 +181,9 @@ That is the claim this work supports, stated so it can be checked:
 - **The two suites behave completely differently.** The harness solves 76% of the
   terminal-bench half and 22% of the DeepSWE half. Averaging those into one number hides
   the only actionable fact in it.
+- **The gap to the top is not a budget gap.** §2.1 spends 64 extra cell-runs proving it:
+  three configurations with more steps and/or a verification block all landed at or below
+  the 60-step harness, and the one that matched its score cost 20% more.
 
 ## 3. Baseline sweep — genome `gen0`, 14 terminal-bench tasks
 
@@ -172,28 +285,46 @@ tasks. Two cell-level details are worth more than the aggregate:
 `max_steps=100` is one entry in the mutation catalogue. Applied to the four tasks that
 were either step-limited with an empty patch or one test short:
 
-| task | 60 steps | 100 steps |
-| --- | --- | --- |
-| katex-multicolumn-array-spans | 0 submitted, 0/94 | **1, 94/94, 124 KB patch** |
-| python-statemachine-state-data-scoping | 0 submitted, 0/72 | 0 submitted, 0/72 |
-| meriyah-explicit-resource-declarations | 0 submitted, 0/49 | 0 submitted, 0/49 |
-| httpx-multipart-response-parsing | 0, 121/122 | 0, 121/122 (submitted itself at step 61) |
+| task | 60 steps (`gen1`) | 100 steps | 100 steps + `verify.self_check` (`gen6`) |
+| --- | --- | --- | --- |
+| katex-multicolumn-array-spans | 0 submitted, 0/94 | **1, 94/94, 124 KB patch** | **1, 94/94** |
+| python-statemachine-state-data-scoping | 0 submitted, 0/72 | 0 submitted, 0/72 | **1** |
+| meriyah-explicit-resource-declarations | 0 submitted, 0/49 | 0 submitted, 0/49 | 0 |
+| httpx-multipart-response-parsing | 0, 121/122 | 0, 121/122 (submitted itself at step 61) | 0, **121/122** |
+| anko-typed-variable-bindings | **1**, 9/9 | — | 0, **0/9** |
+| fastapi-deprecation-response-headers | **1**, 137/137 | — | 0, step_limit at 100 |
+| arktype-json-schema-refs-dependencies | 0 | — | 0 |
+| expr-try-catch-errors | 0 | — | 0 |
+| scc-bounded-memory-spilling | 0, 26/31 | — | 0 |
 
-One task converts from "never wrote a file" to a full pass with a single catalogue
-mutation, which confirms the diagnosis for that cell and refutes it for the other three.
-Those three fail for a different reason each:
+Two tasks convert from "never wrote a file at 60 steps" to full passes — `katex` under the
+budget increase, `python-statemachine` under the budget increase plus the self-check
+block. That is the good news, and it is all of the good news: **the same edit loses two
+cells the 60-step harness passes.** `anko` and `fastapi` are solved at 60 steps, and at
+86–100 steps the agent re-opens work it had already finished — `anko` ends with a patch
+that passes all 94 existing tests and **none of the 9 new ones**. `katex` needs more than
+60 steps and `anko` needs fewer than 100; one global constant cannot serve both.
 
-- `python-statemachine` and `meriyah` still submit nothing after 100 steps: the budget is
-  not what is missing.
-- `httpx` **declares itself finished at step 61 with one of 122 required tests failing**.
-  That is not a budget failure or a capability failure; it is the agent deciding it was
-  done without running the acceptance test — the exact behaviour that the evolution
-  child `prompt+=verify.requirements` (§6, `g1c0`) was proposed to fix, and which fixed
-  `largest-eigenval` on the terminal-bench half.
+And `httpx` failed identically three times, which is the most informative single fact in
+this report. Its one failing test is:
 
-**The headline is a floor, not a ceiling:** the same harness with a longer budget scores
-3/9 on this half, and the failures that remain point at self-verification rather than at
-model capability or at time.
+```
+test_iter_multipart_part_headers_parsing[X: 1\r\n\tz\r\n\r\n-expected7]
+AssertionError: assert '1\tz' == '1 z'
+```
+
+The hidden test folds a header with a **tab**, and expects the parser to unfold it to a
+space. The agent implemented 121 of 122 required behaviours and lost the binary reward on
+a tab-versus-space in a header continuation. No amount of budget, and neither verification
+block, changes that: this is a byte-exact conformance detail that has to be either known
+from the spec or read out of the test. **The harness is one RFC unfolding rule away from
+3/9 on this half**, and the failures that remain are of that kind rather than of the
+budget kind.
+
+**The headline is therefore a configuration, not a floor.** The longer budget is not
+free: over the whole suite it buys three cells and sells three, for 20% more money
+(§2.1). The reported 30-task number is the 60-step harness, and the reason is
+measurement, not preference.
 
 ## 6. Evolution
 
@@ -402,3 +533,12 @@ per-trial artifacts, the replayable rule, and a holdout the loop cannot see.
 - **Cost is measured, not billed.** Spend is computed from provider-reported token
   counts against a declared rate card. A different cache-read discount or a differently
   metered reasoning channel would move the absolute numbers, though not the ranking.
+- **The budget is not the gap, and this report does not pretend otherwise.** Three
+  configurations were built to test whether the remaining failures were a
+  self-inflicted budget shortage (`gen4`, `gen5`, `gen6`, 4–30 cells each). All three
+  scored at or below the 60-step harness they were meant to improve on, and the two
+  mechanisms are recorded above: unbounded deliberation eats the wall clock, and bounding
+  it per response destroys the tool calls. Closing the gap to `codex` needs a harness
+  change this work did not find — most likely a per-task step budget chosen from observed
+  progress rather than a global constant, since the two cells the longer budget broke
+  (`anko`, `fastapi`) and the one it fixed (`katex`) are all in the same suite.

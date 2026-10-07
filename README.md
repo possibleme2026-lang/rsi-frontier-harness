@@ -28,6 +28,14 @@ a higher score. The self-improvement loop's one measured change and the holdout 
 overruled it are in §6 of `RESULTS.md`; the parts of that story that are negative are
 reported with the same prominence as the parts that are not.
 
+Three later configurations were built specifically to close the four-task gap to `codex`
+by giving the agent more of the budget each task actually declares — 64 extra cell-runs
+in total. All three scored at or below the 60-step harness, and the one that matched its
+18/30 did so for **20% more money** ($2.12 vs $1.77). §2.1 of `RESULTS.md` has the
+per-call records that explain why: unbounded deliberation eats the wall clock, and
+bounding it per response truncates the tool calls away. That negative result is why the
+number above is quoted for the configuration it was measured on.
+
 ```
                 ┌──────────────────────────── rsi loop ───────────────────────────┐
                 │                                                                  │
@@ -214,6 +222,8 @@ never share one.
 | `blocks` | `role.engineer, method.loop, tools.bash, errors.recover, budget.brevity, submit.contract` | add/remove named instruction blocks |
 | `tools` | `bash, read_file, write_file, submit` | shrink or grow the tool schema |
 | `max_steps` | 60 | ±20 |
+| `steps_from_declared_budget` | `false` | take the step budget from the task's declared envelope |
+| `step_budget_reference_s` | 1800 | the declared budget `max_steps` is exactly enough for |
 | `obs_head_chars` / `obs_tail_chars` | 4000 / 3000 | ±2000 |
 | `temperature` | 0.0 | 0.2 |
 | `context_budget_tokens` | 96000 | — |
@@ -230,6 +240,15 @@ never share one.
 descriptor mutation and is always tried alongside one. Each mutation carries the
 hypothesis it tests, and every proposal is logged with that hypothesis next to its
 measured outcome.
+
+The two step-budget fields are the one place the harness takes a budget from the task
+rather than from a constant: with the policy on, a task declaring `D` seconds gets
+`max_steps * clamp(D / step_budget_reference_s, 1, 4)` steps. Its default reference is
+the largest declared budget in the terminal-bench half, which makes the policy *inert
+there by construction* — that is a property the test suite pins, because a result
+measured with the policy off has to carry over to a run with it on. `RESULTS.md` §2.1
+reports what happened when the reference was lowered: the extra budget made the harness
+worse, for reasons that are visible in the per-call records.
 
 ## 9. Failure taxonomy
 
