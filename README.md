@@ -20,13 +20,33 @@ who cannot change the model.
 | pass rate | **60.0%** (18/30) | 66.7% | 60.0% | 53.3% | 58.1% |
 | spend on all 30 tasks | **$1.77** | $69.37 | $43.79 | $16.72 | — |
 | effective cost per pass | **$0.098** | $3.468 | $2.433 | $1.045 | $1.220 |
-| token-weighted cache hit rate | **96.0%** | 63.8% | — | — | 92.4% |
+| mean input tokens / task | 0.81 M | 4.70 M | 0.64 M | 0.38 M | — |
+| mean output tokens / task | 68 k | 17 k | 8 k | 6 k | — |
+| token-weighted cache hit rate | 96.0% | 99.1% | 97.2% | 94.5% | 92.4% |
 
-Same pass rate as the best published harnesses at **1/25th the cost per solved task**, and
-inside the published band rather than above it — the claim is the efficiency frontier, not
-a higher score. The self-improvement loop's one measured change and the holdout that
-overruled it are in §6 of `RESULTS.md`; the parts of that story that are negative are
-reported with the same prominence as the parts that are not.
+**Read the cost row carefully.** The published baselines were run on Kimi K3 at
+3.00 / 3.00 / 0.30 / 15.00 per 1M; this harness runs DeepSeek-V4.1-Flash at
+0.28 / 0.28 / 0.028 / 0.42, and the published configurations are not reproducible from the
+clone, so the two columns are *not* a same-model comparison. Re-pricing our measured
+tokens on their frozen card isolates the harness from the model: **$40.26 for the 30 tasks
+($2.24 per pass), which is cheapest of the twelve but only 1.09x ahead of `pi-responses`
+and 1.55x ahead of `codex`** — and `exo` would still beat that token profile outright.
+The 35x headline is mostly the model's price; the harness's own contribution is that
+smaller, real gap. `tools/repricing.py` prints both.
+
+The cache row is the same warning: our 96.0% is above the suite's 92.4% and *below* every
+top-half harness including `codex`. Frugality here comes from a short transcript, not from
+an unusually warm cache.
+
+Same pass rate as the best published harnesses, and the cheapest measured configuration on
+this suite by an order of magnitude — inside the published band rather than above it. The
+claim is the efficiency frontier, not a higher score. The self-improvement loop's one
+measured change and the holdout that overruled it are in §6 of `RESULTS.md`; the parts of
+that story that are negative are reported with the same prominence as the parts that are
+not.
+
+`assets/frontier-harness-with-rsih.png` plots all of it in the published chart's own visual
+language, with the x axis extended two decades to reach $0.10 per pass.
 
 Three later configurations were built specifically to close the four-task gap to `codex`
 by giving the agent more of the budget each task actually declares — 64 extra cell-runs

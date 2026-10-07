@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" role="img" aria-label="FrontierHarness Eval cost against pass rate, with RSIH added">
+<rect width="1200" height="660" fill="#020202"/>
+<style>text{font-family:Arial,Helvetica,sans-serif}.mono,.axis,.point-value{font-family:"SFMono-Regular",Menlo,monospace}.axis{fill:#ececec}.point-value{fill:#bdbdbd}</style>
+<g class="axis">
+<line x1="76.0" y1="74" x2="76.0" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="76.0" y="578" text-anchor="middle" font-size="12" class="mono">$0.02</text>
+<line x1="208.8" y1="74" x2="208.8" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="208.8" y="578" text-anchor="middle" font-size="12" class="mono">$0.05</text>
+<line x1="309.3" y1="74" x2="309.3" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="309.3" y="578" text-anchor="middle" font-size="12" class="mono">$0.10</text>
+<line x1="409.8" y1="74" x2="409.8" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="409.8" y="578" text-anchor="middle" font-size="12" class="mono">$0.20</text>
+<line x1="542.7" y1="74" x2="542.7" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="542.7" y="578" text-anchor="middle" font-size="12" class="mono">$0.50</text>
+<line x1="643.2" y1="74" x2="643.2" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="643.2" y="578" text-anchor="middle" font-size="12" class="mono">$1</text>
+<line x1="743.7" y1="74" x2="743.7" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="743.7" y="578" text-anchor="middle" font-size="12" class="mono">$2</text>
+<line x1="876.5" y1="74" x2="876.5" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="876.5" y="578" text-anchor="middle" font-size="12" class="mono">$5</text>
+<line x1="977.0" y1="74" x2="977.0" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="977.0" y="578" text-anchor="middle" font-size="12" class="mono">$10</text>
+<line x1="1077.5" y1="74" x2="1077.5" y2="556" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="1077.5" y="578" text-anchor="middle" font-size="12" class="mono">$20</text>
+<line x1="76" y1="512.2" x2="1178" y2="512.2" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="64" y="516.2" text-anchor="end" font-size="12" class="mono">50%</text>
+<line x1="76" y1="402.6" x2="1178" y2="402.6" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="64" y="406.6" text-anchor="end" font-size="12" class="mono">55%</text>
+<line x1="76" y1="293.1" x2="1178" y2="293.1" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="64" y="297.1" text-anchor="end" font-size="12" class="mono">60%</text>
+<line x1="76" y1="183.5" x2="1178" y2="183.5" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="64" y="187.5" text-anchor="end" font-size="12" class="mono">65%</text>
+<line x1="76" y1="74.0" x2="1178" y2="74.0" stroke="#323232" stroke-dasharray="3 3"/>
+<text x="64" y="78.0" text-anchor="end" font-size="12" class="mono">70%</text>
+</g>
+<path d="M 76 74 V 556 H 1178" fill="none" stroke="#eeeeee" stroke-width="1.25"/>
+<line x1="823.5" y1="147.0" x2="649.6" y2="439.2" stroke="#ff7a12" stroke-width="1.6" stroke-dasharray="6 4" opacity="0.55"/>
+<line x1="307.7" y1="293.1" x2="823.5" y2="147.0" stroke="#ff7a12" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="823.1" y1="293.1" x2="788.9" y2="258.9" stroke="#75b8ed" stroke-width="1" opacity="0.5"/>
+<line x1="868.9" y1="366.1" x2="904.2" y2="401.4" stroke="#f2a777" stroke-width="1" opacity="0.5"/>
+<rect x="845.0" y="130.0" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="849.0" y="143.0" fill="#9385ff" font-size="13.0" font-weight="400">Codex</text>
+<text x="849.0" y="158.0" class="point-value" font-size="11.5">66.7% · $3.47</text>
+<rect x="838.6" y="203.1" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="842.6" y="216.1" fill="#70b6ee" font-size="13.0" font-weight="400">DSH Creator</text>
+<text x="842.6" y="231.1" class="point-value" font-size="11.5">63.3% · $3.28</text>
+<rect x="1007.7" y="163.1" width="114.4" height="34.0" rx="3" fill="#020202"/>
+<text x="1011.7" y="176.1" fill="#f0a57f" font-size="13.0" font-weight="400">Claude Code</text>
+<text x="1011.7" y="191.1" class="point-value" font-size="11.5">63.3% · $18.34</text>
+<rect x="718.7" y="314.6" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="722.7" y="327.6" fill="#f0f0f0" font-size="13.0" font-weight="400">Pi</text>
+<text x="722.7" y="342.6" class="point-value" font-size="11.5">60.0% · $2.43</text>
+<rect x="886.7" y="276.1" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="890.7" y="289.1" fill="#75b8ed" font-size="13.0" font-weight="400">DSH PTC</text>
+<text x="890.7" y="304.1" class="point-value" font-size="11.5">60.0% · $4.58</text>
+<rect x="682.1" y="224.9" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="686.1" y="237.9" fill="#75b8ed" font-size="13.0" font-weight="400">DSH Standard</text>
+<text x="686.1" y="252.9" class="point-value" font-size="11.5">60.0% · $3.46</text>
+<rect x="904.2" y="401.4" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="908.2" y="414.4" fill="#f2a777" font-size="13.0" font-weight="400">Oh My Pi</text>
+<text x="908.2" y="429.4" class="point-value" font-size="11.5">56.7% · $4.75</text>
+<rect x="708.5" y="381.6" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="712.5" y="394.6" fill="#83d7c5" font-size="13.0" font-weight="400">Kimi Code</text>
+<text x="712.5" y="409.6" class="point-value" font-size="11.5">56.7% · $3.65</text>
+<rect x="889.6" y="349.1" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="893.6" y="362.1" fill="#75b8ed" font-size="13.0" font-weight="400">DSH Minimal</text>
+<text x="893.6" y="377.1" class="point-value" font-size="11.5">56.7% · $4.72</text>
+<rect x="672.1" y="422.2" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="676.1" y="435.2" fill="#d3d3d3" font-size="13.0" font-weight="400">Exo Harness</text>
+<text x="676.1" y="450.2" class="point-value" font-size="11.5">53.3% · $1.05</text>
+<rect x="835.3" y="495.2" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="839.3" y="508.2" fill="#a978e7" font-size="13.0" font-weight="400">OpenCode</text>
+<text x="839.3" y="523.2" class="point-value" font-size="11.5">50.0% · $3.24</text>
+<rect x="668.0" y="495.2" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="672.0" y="508.2" fill="#a3a3a3" font-size="13.0" font-weight="400">Hermes</text>
+<text x="672.0" y="523.2" class="point-value" font-size="11.5">50.0% · $2.90</text>
+<rect x="171.9" y="276.1" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="175.9" y="289.1" fill="#4ade80" font-size="14.5" font-weight="700">RSIH</text>
+<text x="175.9" y="304.1" class="point-value" font-size="11.5">60.0% · $0.10 per pass</text>
+<rect x="586.0" y="276.1" width="152.4" height="34.0" rx="3" fill="#020202"/>
+<text x="590.0" y="289.1" fill="#22c55e" font-size="13.0" font-weight="400">RSIH @ Kimi K3 card</text>
+<text x="590.0" y="304.1" class="point-value" font-size="11.5">60.0% · $2.24</text>
+<rect x="356.7" y="276.1" width="106.8" height="34.0" rx="3" fill="#020202"/>
+<text x="360.7" y="289.1" fill="#22c55e" font-size="13.0" font-weight="400">RSIH gen6</text>
+<text x="360.7" y="304.1" class="point-value" font-size="11.5">60.0% · $0.12</text>
+<circle cx="823.5" cy="147.0" r="8.5" fill="#9385ff" stroke="#d8d8d8" stroke-width="1.2"/>
+<polygon points="815.6,210.1 825.6,228.1 805.6,228.1" fill="#70b6ee" stroke="#d8d8d8" stroke-width="1.2"/>
+<polygon points="1064.9,210.1 1074.9,220.1 1064.9,230.1 1054.9,220.1" fill="#f0a57f" stroke="#d8d8d8" stroke-width="1.2"/>
+<rect x="763.2" y="284.2" width="17.9" height="17.9" fill="#f0f0f0" stroke="#d8d8d8" stroke-width="1.2"/>
+<polygon points="863.7,283.1 873.7,293.1 863.7,303.1 853.7,293.1" fill="#75b8ed" stroke="#d8d8d8" stroke-width="1.2"/>
+<rect x="814.2" y="284.2" width="17.9" height="17.9" fill="#75b8ed" stroke="#d8d8d8" stroke-width="1.2"/>
+<polygon points="868.9,356.1 878.9,366.1 868.9,376.1 858.9,366.1" fill="#f2a777" stroke="#d8d8d8" stroke-width="1.2"/>
+<circle cx="830.8" cy="366.1" r="8.5" fill="#83d7c5" stroke="#d8d8d8" stroke-width="1.2"/>
+<circle cx="868.1" cy="366.1" r="8.5" fill="#75b8ed" stroke="#d8d8d8" stroke-width="1.2"/>
+<polygon points="659.1,439.2 654.3,447.4 644.8,447.4 640.1,439.2 644.8,430.9 654.3,430.9" fill="#d3d3d3" stroke="#d8d8d8" stroke-width="1.2"/>
+<rect x="804.9" y="503.3" width="17.9" height="17.9" fill="#a978e7" stroke="#d8d8d8" stroke-width="1.2"/>
+<polygon points="797.8,502.2 807.8,520.2 787.8,520.2" fill="#a3a3a3" stroke="#d8d8d8" stroke-width="1.2"/>
+<circle cx="759.9" cy="293.1" r="7.5" fill="none" stroke="#22c55e" stroke-width="1.2"/>
+<polygon points="333.7,285.6 341.2,293.1 333.7,300.6 326.2,293.1" fill="none" stroke="#22c55e" stroke-width="1.2"/>
+<circle cx="307.7" cy="293.1" r="17" fill="none" stroke="#4ade80" stroke-width="1.2" opacity="0.45"/>
+<circle cx="307.7" cy="293.1" r="8.5" fill="#4ade80" stroke="#d8d8d8" stroke-width="1.2"/>
+<text x="24" y="34" fill="#ececec" font-size="19" font-weight="700">FrontierHarness Eval v1 · 30 tasks</text>
+<text x="24" y="54" fill="#9d9d9d" font-size="12">pass rate against effective cost per pass · x is logarithmic · 21 terminal-bench + 9 datacurve</text>
+<text x="627" y="600" fill="#ececec" text-anchor="middle" font-size="13" class="mono">Effective cost per pass (log scale)</text>
+<text x="76" y="626" fill="#9d9d9d" font-size="11.5" class="mono">RSIH: 30/30 cells measured here with DeepSeek-V4.1-Flash @ tierflow.cn · every other point is read from the eval's own results file (Kimi K3)</text>
+<text x="76" y="646" fill="#9d9d9d" font-size="11.5" class="mono">the published asset labels this axis "median cost per task" but its plotted values are effective cost per pass, which is what this chart uses</text>
+<text x="26" y="315" fill="#ececec" text-anchor="middle" font-size="13" class="mono" transform="rotate(-90 26 315)">Pass rate</text>
+</svg>

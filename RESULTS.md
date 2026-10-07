@@ -324,20 +324,100 @@ provider actually bills:
 Three things follow, and they are why the cost number is not an accident:
 
 - **The token-weighted cache hit rate is 96.0%** (23.2 M of 24.2 M prompt tokens were
-  cache reads), against 63.8% for `codex` and 92.4% for the suite as a whole. Prefix
-  stability is a first-class design constraint here: the system prompt is frozen per
-  genome, tool schemas are emitted in a fixed order, and the observation window is
-  trimmed from the middle rather than rewritten, so each turn extends a cacheable prefix
-  instead of invalidating it.
+  cache reads), against 92.4% for the suite as a whole. That is *above* the suite average
+  and *below* every top-half harness — `codex` is at 99.1% normalized and 88.0% typical,
+  `pi-responses` at 97.2%. **The cost advantage is therefore not a warmer cache.** What it
+  is instead is a shorter transcript: 0.81 M input tokens per task against `codex`'s
+  4.70 M. Prefix stability still matters here — the system prompt is frozen per genome,
+  tool schemas are emitted in a fixed order, and the observation window is trimmed from
+  the middle rather than rewritten — but it buys a transcript small enough to be cheap,
+  not a cache hit rate that beats the field.
 - **Cache reads are still 37% of spend**, even at one tenth of the input price, because
   the transcript is 23 M tokens for 30 tasks. Being cheap required both a low cache-read
   rate *and* a transcript small enough that 96% of it being cached still costs less than
   the output.
-- **Output tokens are the largest single component at 48%.** The harness is frugal with
-  transcript and generous with completions — the opposite of the published harnesses
-  (codex: 4.7 M input / 17 k output per task; here: 0.81 M input / 68 k output). This is
-  the most obvious lever left, which is why the evolution loop's cost branch included
-  `max_output_tokens`.
+- **Output tokens are the largest single component at 48%, and this harness is the most
+  output-hungry configuration measured.** 68 k output tokens per task against `codex`'s
+  17 k, `pi-responses`' 8 k and `exo`'s 6 k — because 79% of each completion is the
+  reasoning channel (§4.1). This is the opposite of the published harnesses' profile and
+  it is the reason the reported cost is sensitive to the output rate rather than to the
+  cache. It is also the most obvious lever left, which is why the evolution loop's cost
+  branch included `max_output_tokens`.
+
+### 4.3 The price-independent comparison
+
+Cost per pass mixes two things: what the model charges per token, and how many tokens the
+harness uses. The second is provider-reported on both sides, so it can be compared
+directly. `tools/token_profile.py`:
+
+| configuration | mean input / task | mean output / task | turns | cache hit |
+| --- | ---: | ---: | ---: | ---: |
+| `codex` | 4,700,224 | 16,991 | 62.4 | 99.1% |
+| `dsh-creator` | 2,119,233 | 13,649 | 35.7 | 98.3% |
+| `dsh-minimal` | 4,790,827 | 13,392 | 47.6 | 98.6% |
+| `claude-code` | 1,903,406 | 10,109 | 49.3 | 24.9% |
+| `kimi-code` | 3,395,606 | 10,989 | 39.9 | 98.3% |
+| `pi-responses` | 638,339 | 7,927 | 18.7 | 97.2% |
+| `exo` | 375,126 | 5,545 | 12.0 | 94.5% |
+| `opencode` | 153,533 | 2,398 | 11.2 | 91.6% |
+| **rsih `gen1`** | **805,752** | **67,551** | **40.1** | **96.0%** |
+
+Read honestly, this table does not flatter the harness: it is mid-pack on input, last on
+output, and mid-pack on cache. The published configurations include several that are
+leaner in tokens. So the money question becomes: if this token profile ran on *their*
+price card, what would it cost?
+
+### 4.4 Re-pricing our tokens on the frozen Kimi K3 card
+
+`tools/repricing.py` prices our measured 30-cell token counts on the baselines' card
+(3.00 / 3.00 / 0.30 / 15.00 per 1M), which removes the model-price difference and leaves
+the harness difference:
+
+| | 30 tasks | per pass |
+| --- | ---: | ---: |
+| ours, DeepSeek-V4.1-Flash card (the reported number) | $1.7718 | $0.0984 |
+| ours, frozen Kimi K3 card | **$40.2622** | **$2.2368** |
+
+Against the published configurations on their own card, $2.237 per pass is the cheapest of
+the twelve — but by **1.09x over `pi-responses` ($2.433)** and **1.55x over `codex`
+($3.468)**, not by 35x. And it is not actually the cheapest token profile on the board:
+`exo` reaches 53.3% at $1.045 per pass with a third of our input and a twelfth of our
+output. **The headline ratio is mostly the model's price. The harness's own contribution
+is the small real gap above, and this is the number to quote to anyone who asks whether
+the harness or the model is doing the work.**
+
+### 4.5 Is the declared card right? One billed call says it over-states by 3x
+
+`pricing.json` states that its rates are operator-declared rather than verified. The
+provider's console records one real call, and `tools/billing_check.py` runs the arithmetic
+against it:
+
+```
+billed call        : 11,145 fresh | 88,832 cached | 196 output
+charged            : 0.013706 CNY
+rate (CNY per 1M)         implied by the bill  declared card   ratio
+fresh input                            0.6744         2.0160    0.33
+cache read                             0.0674         0.2016    0.33
+output                                 1.0117         3.0240    0.33
+```
+
+The bill implies a fresh-input rate of ¥0.674 per 1M where the declared card says ¥2.016
+(at 7.2 CNY/USD) — **the card is 2.99x the billed rate**. That call's output term is only
+1.45% of its cost, so the output rate is genuinely unconstrained by it; what the record
+does establish is that the input side is billed at about a third of what was declared
+(the console labels it 阶梯计费, tiered). Consequences for the headline:
+
+| assumption | 30 tasks | per pass |
+| --- | ---: | ---: |
+| declared card (quoted everywhere in this report) | $1.7718 | $0.0984 |
+| billed input rates, declared output rate | $1.1591 | $0.0644 |
+| billed input rates, output rate scaled with them | $0.5927 | $0.0329 |
+
+So **$0.0984 per pass is an upper bound, and the real figure is between $0.033 and
+$0.064** depending on the output rate. The report keeps quoting the declared-card numbers
+because they are the conservative ones and because the card is what the harness declares;
+re-pricing is one command. The CNY/USD conversion is the only assumption in the table, and
+it is stated.
 
 ## 5. DeepSWE (datacurve) — the half of the suite that is not terminal-bench
 

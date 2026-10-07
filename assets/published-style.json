@@ -1,0 +1,62 @@
+{
+  "Codex": {
+    "colour": "#9385ff",
+    "shape": "circle",
+    "printed": "66.7% \u00b7 $3.47"
+  },
+  "DSH Creator": {
+    "colour": "#70b6ee",
+    "shape": "triangle",
+    "printed": "63.3% \u00b7 $3.28"
+  },
+  "Claude Code": {
+    "colour": "#f0a57f",
+    "shape": "diamond",
+    "printed": "63.3% \u00b7 $18.34"
+  },
+  "Pi": {
+    "colour": "#f0f0f0",
+    "shape": "square",
+    "printed": "60.0% \u00b7 $2.43"
+  },
+  "DSH PTC": {
+    "colour": "#75b8ed",
+    "shape": "diamond",
+    "printed": "60.0% \u00b7 $4.58"
+  },
+  "DSH Standard": {
+    "colour": "#75b8ed",
+    "shape": "square",
+    "printed": "60.0% \u00b7 $3.46"
+  },
+  "Oh My Pi": {
+    "colour": "#f2a777",
+    "shape": "diamond",
+    "printed": "56.7% \u00b7 $4.75"
+  },
+  "Kimi Code": {
+    "colour": "#83d7c5",
+    "shape": "circle",
+    "printed": "56.7% \u00b7 $3.65"
+  },
+  "DSH Minimal": {
+    "colour": "#75b8ed",
+    "shape": "circle",
+    "printed": "56.7% \u00b7 $4.72"
+  },
+  "Exo Harness": {
+    "colour": "#d3d3d3",
+    "shape": "path",
+    "printed": "53.3% \u00b7 $1.05"
+  },
+  "OpenCode": {
+    "colour": "#a978e7",
+    "shape": "square",
+    "printed": "50.0% \u00b7 $3.24"
+  },
+  "Hermes": {
+    "colour": "#a3a3a3",
+    "shape": "triangle",
+    "printed": "50.0% \u00b7 $2.90"
+  }
+}

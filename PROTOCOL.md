@@ -89,6 +89,10 @@ which is how a pass that does not reproduce gets found rather than averaged away
 & $py tools/published_provenance.py     # what the baseline file actually contains
 & $py tools/cost_conventions.py runs/gen0-probe-g0-gen0 runs/holdout-gen1 runs/close-polyglot runs/deepswe-9
 & $py tools/verify_cost.py runs/deepswe-9/trials/anko-typed-variable-bindings
+& $py tools/token_profile.py           # our tokens/task next to the published harnesses'
+& $py tools/repricing.py               # our tokens priced on the frozen Kimi K3 card
+& $py tools/billing_check.py           # the declared card against one real billed call
+& $py tools/cache_fields.py            # the eval's two different cache-hit statistics
 ```
 
 Every dollar figure is the provider-reported token counts times the declared card in
@@ -96,6 +100,19 @@ Every dollar figure is the provider-reported token counts times the declared car
 `verify_cost.py` re-derives one trial's spend from `llm-calls.jsonl` alone;
 `cost_conventions.py` reports both `cost_usd` and `cost_first_cold_usd`, the latter being
 the convention the published baselines use. Quote the convention with the number.
+
+## 5c. The comparison chart
+
+```powershell
+& $py tools/chart_data.py                       # published + our rows, as JSON
+& $py tools/published_colours.py                # their per-configuration colours and markers
+& $py tools/frontier_chart.py --repriced 2.2368  # assets/frontier-harness-with-rsih.{svg,png}
+```
+
+`--repriced` is the value `tools/repricing.py` prints; the chart draws it as a second
+RSIH point so the model-price contribution and the harness contribution are visible as
+separate distances. The published side of the chart is read from `chart-data.json`, which
+is read from the eval's own results file — nothing in it is re-run.
 
 ## 5b. What was measured here and what was not
 
