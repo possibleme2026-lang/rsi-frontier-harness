@@ -603,3 +603,86 @@ def test_diff_graded_note_tells_the_agent_the_tests_are_hidden(tmp_path: Path):
     file_task = replace(task, collect_cmd="cp /app/out.txt /logs/artifacts/out.txt")
     assert not _is_diff_graded(file_task)
     assert "NOT in this container" not in _env_note(file_task, default_genome("g"), 60)
+
+
+# ---------------------------------------------- judge capability, not only pass counts
+#
+# On a six-task evolve split the pass-count floor needs five net flips, so a mutation that
+# moves every cell from "no patch" to "nearly passing" is invisible to it.  The repository
+# suites report how far each patch got, and these tests pin down that the dense gate uses
+# that signal without ever accepting a regression.
+
+
+def _trial(task: str, status: str, f2p: float | None = None, p2p: float | None = None):
+    from rsih.bench.runner import TrialResult
+
+    return TrialResult(
+        task_id=task,
+        genome_id="g",
+        genome_fingerprint="f",
+        status=status,
+        reward=1.0 if status == "success" else 0.0,
+        turns=10,
+        duration_s=1.0,
+        cost_usd=0.01,
+        cost_first_cold_usd=0.01,
+        usage={},
+        exit_reason="submitted",
+        extra={"verifier_detail": ({"f2p": f2p, "p2p": p2p} if f2p is not None else {})},
+    )
+
+
+def _cap_outcome(results, run_id: str = "r"):
+    from rsih.rsi.evolve import Outcome
+
+    return Outcome(genome=default_genome("g"), run_id=run_id, run_dir=Path("."), results=results)
+
+
+def test_capability_credit_is_dense_and_never_reaches_a_pass():
+    outcome = _cap_outcome([
+        _trial("t/pass", "success"),
+        _trial("t/nearly", "failure", f2p=0.972, p2p=1.0),
+        _trial("t/regressed", "failure", f2p=0.839, p2p=0.983),
+        _trial("t/empty", "failure"),
+    ])
+    scores = outcome.capability()
+    assert scores["t/pass"] == 1.0
+    assert 0.97 < scores["t/nearly"] < 1.0, "a near miss must stay below a pass"
+    # a regression in the existing suite must be penalised, not averaged away
+    assert scores["t/regressed"] < 0.839
+    assert scores["t/empty"] == 0.0
+
+
+def test_dense_gate_accepts_progress_the_pass_count_cannot_see():
+    """Six tasks, no pass flips, every cell moves from nothing to nearly passing."""
+    left = _cap_outcome([_trial(f"t/{i}", "failure") for i in range(6)])
+    right = _cap_outcome([_trial(f"t/{i}", "failure", f2p=0.8, p2p=1.0) for i in range(6)])
+    binary = paired_decision(left, right)
+    # There is no discordance at all: not one cell changed hands, so the pass-count
+    # signal is a flat tie and its floor is zero.
+    assert binary.diff == 0.0 and binary.floor == 0.0
+    assert binary.child_wins == [] and binary.incumbent_wins == []
+    # The dense signal is what turns that tie into an adoptable improvement.
+    assert binary.accepted and binary.reason == "accepted_capability"
+    assert binary.capability_t == float("inf")
+
+
+def test_dense_gate_refuses_to_trade_a_pass_for_partial_credit():
+    left = _cap_outcome([_trial("t/win", "success"), _trial("t/a", "failure"), _trial("t/b", "failure")])
+    right = _cap_outcome([
+        _trial("t/win", "failure", f2p=0.9, p2p=1.0),  # lost a pass
+        _trial("t/a", "failure", f2p=0.9, p2p=1.0),
+        _trial("t/b", "failure", f2p=0.9, p2p=1.0),
+    ])
+    decision = paired_decision(left, right)
+    assert not decision.accepted
+    assert decision.reason in ("rejected_within_noise", "rejected_worse")
+
+
+def test_dense_gate_still_rejects_a_regression():
+    left = _cap_outcome([_trial(f"t/{i}", "failure", f2p=0.5, p2p=1.0) for i in range(4)])
+    right = _cap_outcome([_trial(f"t/{i}", "failure", f2p=0.1, p2p=1.0) for i in range(4)])
+    decision = paired_decision(left, right)
+    assert not decision.accepted
+    assert decision.reason == "rejected_worse"
+

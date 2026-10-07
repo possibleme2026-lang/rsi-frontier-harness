@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import statistics
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -62,6 +63,33 @@ class Outcome:
     def outcomes(self) -> dict[str, bool]:
         return {r.task_id: r.status == "success" for r in self.results if r.status in ("success", "failure")}
 
+    def capability(self) -> dict[str, float]:
+        """Per-task credit in [0, 1), dense enough for the gate to see progress.
+
+        A pass is 1.0.  A failure is not automatically 0.0: the repository suites report
+        how many of the required tests passed *and* what fraction of the existing suite
+        stayed green, so 70 of 72 required tests with no regressions is a different
+        measurement from having written no patch at all.  A failure is capped below 1.0
+        so that partial credit can never be mistaken for a pass, and the two fractions are
+        multiplied so that breaking the existing suite is penalised rather than averaged
+        away.
+        """
+        scores: dict[str, float] = {}
+        for result in self.results:
+            if result.status not in ("success", "failure"):
+                continue
+            if result.status == "success":
+                scores[result.task_id] = 1.0
+                continue
+            detail = (getattr(result, "extra", None) or {}).get("verifier_detail") or {}
+            f2p, p2p = detail.get("f2p"), detail.get("p2p")
+            if f2p is None:
+                scores[result.task_id] = 0.0
+                continue
+            p2p = 1.0 if p2p is None else max(0.0, min(1.0, float(p2p)))
+            scores[result.task_id] = min(0.99, max(0.0, float(f2p)) * p2p)
+        return scores
+
     def cost(self) -> float | None:
         costs = [r.cost_usd for r in self.results if r.cost_usd is not None]
         if len(costs) != len(self.results) or not costs:
@@ -99,6 +127,7 @@ class Decision:
     incumbent_wins: list[str] = field(default_factory=list)
     cost_ratio: float | None = None
     cost_t: float | None = None
+    capability_t: float | None = None
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -132,6 +161,7 @@ def paired_decision(
     if incumbent_cost and child_cost is not None and incumbent_cost > 0:
         cost_ratio = child_cost / incumbent_cost
     cost_t = paired_cost_t(incumbent, child)
+    capability_t = paired_capability_t(incumbent, child)
     if (
         cost_ratio is not None
         and cost_ratio <= cost_margin
@@ -143,12 +173,62 @@ def paired_decision(
     ):
         decision = Decision(True, "accepted_cost", diff, floor, len(b) + len(c), n, b, c, cost_ratio)
         decision.cost_t = cost_t
+        decision.capability_t = capability_t
         return decision
 
-    reason = "rejected_worse" if diff < 0 else "rejected_within_noise"
+    # A dense signal can see progress a pass count cannot.  On a six-task split the
+    # pass-count floor needs five net flips, so a mutation that moves every task from
+    # "no patch" to "almost passing" is invisible to it; this branch reads the same
+    # paired design off the graded fractions instead.  It still may not lose a pass, so
+    # recovering ground on one cell can never be paid for with another cell's success.
+    if (
+        capability_t is not None
+        and capability_t >= z
+        and child.passed >= incumbent.passed
+        and len(child.valid) == len(incumbent.valid)
+    ):
+        decision = Decision(
+            True, "accepted_capability", diff, floor, len(b) + len(c), n, b, c, cost_ratio
+        )
+        decision.cost_t = cost_t
+        decision.capability_t = capability_t
+        return decision
+
+    # A consistent slide in the graded fractions is a regression even when no pass
+    # changed hands, and reporting it as "within noise" would understate what happened.
+    regressed = diff < 0 or (capability_t is not None and capability_t <= -z)
+    reason = "rejected_worse" if regressed else "rejected_within_noise"
     decision = Decision(False, reason, diff, floor, len(b) + len(c), n, b, c, cost_ratio)
     decision.cost_t = cost_t
+    decision.capability_t = capability_t
     return decision
+
+
+def paired_capability_t(incumbent: Outcome, child: Outcome) -> float | None:
+    """Paired t-statistic of the per-task capability difference, child minus incumbent.
+
+    Positive means the child made more graded progress on the tasks they share.  Uses the
+    same per-task pairing as the cost gate: the mean of the differences over the tasks
+    both runs measured, divided by its own standard error, so a single task that improved
+    cannot carry a verdict on its own.
+    """
+    left = incumbent.capability()
+    right = child.capability()
+    shared = sorted(set(left) & set(right))
+    if len(shared) < 2:
+        return None
+    deltas = [right[t] - left[t] for t in shared]
+    n = len(deltas)
+    mean = statistics.fmean(deltas)
+    if n < 2:
+        return None
+    spread = statistics.stdev(deltas)
+    if spread == 0:
+        # Every task moved by the same amount.  That is a real improvement rather than
+        # noise, but there is no standard error to divide by; fall back to a very large
+        # statistic only when the common move is upward.
+        return float("inf") if mean > 0 else (0.0 if mean == 0 else float("-inf"))
+    return mean / (spread / (n ** 0.5))
 
 
 def paired_cost_t(incumbent: Outcome, child: Outcome) -> float | None:
