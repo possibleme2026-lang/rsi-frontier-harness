@@ -1,4 +1,4 @@
-"""Per-cell terminal-bench comparison between the reported configuration and a candidate.
+﻿"""Per-cell terminal-bench comparison between the reported configuration and a candidate.
 
 The repository half has one run per configuration; the terminal half has many, spread over
 several run directories from earlier experiments.  This collects every scored trial of the
@@ -35,6 +35,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--candidate", default="gen7-tb")
     parser.add_argument("--suite", default="terminal-bench")
+    parser.add_argument(
+        "--baseline-genome",
+        default=BASELINE_GENOME_ID,
+        help="gen6 is the only configuration with a single clean 21-cell terminal-bench "
+        "run, so it makes the tightest comparison even though it differs from gen1 in two "
+        "ways; gen1 is the reported harness but its terminal half is pooled over runs",
+    )
     args = parser.parse_args()
 
     baseline = load_trials("*")
@@ -50,7 +57,7 @@ def main() -> int:
     print(f"{'task':<34}{'baseline':>22}{'candidate':>12}   verdict")
     won = lost = same_pass = same_fail = 0
     for task in sorted(candidate):
-        base = [t for t in baseline.get(task, []) if t.get("genome_id") == BASELINE_GENOME_ID]
+        base = [t for t in baseline.get(task, []) if t.get("genome_id") == args.baseline_genome]
         cand = candidate[task][0]
         cand_pass = cand["status"] == "success"
         if not base:
@@ -94,3 +101,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
