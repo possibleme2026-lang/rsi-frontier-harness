@@ -620,6 +620,43 @@ kept investigating. That is a limit of the mechanism as written and it is the ho
 boundary of the `expr` result: the gate converts a cell that was *nearly* ready to act, and
 does not by itself rescue a cell where the agent has not understood the change yet.
 
+### 5.4 The same bundle over the terminal half — where it loses
+
+The repository half is nine of thirty cells, so §5.3 cannot say whether `gen7` is a better
+harness. It was then run on all 21 terminal-bench cells (`runs/gen7-tb`).
+
+The tightest comparison is against `gen6`, the only configuration with a single clean
+21-cell terminal run. On the 19 cells both covered:
+
+| | cells |
+| --- | ---: |
+| `gen6` passed, `gen7` passed — held | 12 |
+| `gen6` passed, `gen7` **failed** — lost | **3** (`build-cython-ext`, `extract-elf`, `polyglot-c-py`) |
+| `gen6` failed, `gen7` passed — won | **0** |
+| both failed | 4 |
+| **net** | **−3** |
+
+`gen7` scores **12/21** on the terminal half against `gen6`'s 15/21, and against `gen1`'s
+pooled terminal record it loses `polyglot-c-py` and wins nothing
+(`tools/tb_compare.py`). Adding the repository half — where the two are a tie at 2 passes —
+`gen7` is **14/30 against `gen1`'s 18/30.** The bundle is a net loss and `gen1` stays the
+reported harness.
+
+It matters which part of the bundle did the damage:
+
+- **The artifact gate did not misfire on the terminal half.** It fired in **0 of 20**
+  terminal cells (`tools/gate_firings.py`), exactly as its diff-graded confinement intends,
+  and never issued a `git status` it could not interpret. The gate is not implicated.
+- **The terminal loss tracks the three prompt blocks and the countdown**, the parts of the
+  bundle with no repository-specific justification: they were motivated by hidden test
+  suites, and the terminal half has none — it runs its verifier in place, in the container
+  the agent has already been working in.
+
+So the finding narrows rather than closes. The diagnosis (five of seven repository failures
+never edited the deliverable) stands, the gate is the measured fix for it, and the fix has
+to be applied *without* the general-purpose prompting that came bundled with it — which is
+the configuration §5.5 measures.
+
 ## 6. Evolution
 
 The loop (`rsih evolve`) proposes descriptor mutations and free-text prompt rules,
