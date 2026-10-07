@@ -164,8 +164,11 @@ def _gate_due(step_index: int, step_cap: int) -> bool:
 def _product_touched(sandbox: DockerSandbox, task: Task, genome: Genome) -> bool:
     """True when the repository diff contains at least one non-scratch, non-test file.
 
-    Returns True on any doubt (no git, unreadable status): the gate exists to add a
-    message, and a false alarm would push an agent that is already editing to edit more.
+    Only meaningful for tasks whose deliverable is a diff, which is why the caller checks
+    `_is_diff_graded` first: a task whose object *is* git history (rewriting it, pruning
+    it) would be told to write source code it was never asked for.  Returns True on any
+    doubt (no git, unreadable status), because the gate exists to add a message, and a
+    false alarm would push an agent that is already editing to edit more.
     """
     changed = tool_lib.product_changes(sandbox, task.workdir)
     if changed is None:
@@ -310,6 +313,7 @@ class AgentLoop:
             ledger=ledger,
         )
         step_cap = genome.effective_max_steps(task.agent_timeout_declared_s)
+        diff_graded = _is_diff_graded(task)
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": genome.system_prompt()},
             {"role": "user", "content": f"# Task\n{task.instruction.strip()}\n\n{_env_note(task, genome, step_cap)}"},
@@ -457,7 +461,12 @@ class AgentLoop:
                     continue
                 observation = record["observation"]
                 gate_left = step_cap - step_index - 1
-                if genome.artifact_gate and gate_left > 0 and _gate_due(step_index, step_cap):
+                if (
+                    genome.artifact_gate
+                    and diff_graded
+                    and gate_left > 0
+                    and _gate_due(step_index, step_cap)
+                ):
                     if not _product_touched(sandbox, task, genome):
                         episode.artifact_warnings += 1
                         observation = f"{observation}\n\n{ARTIFACT_GATE_TEXT}"

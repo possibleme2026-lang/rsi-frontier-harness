@@ -686,3 +686,25 @@ def test_dense_gate_still_rejects_a_regression():
     assert not decision.accepted
     assert decision.reason == "rejected_worse"
 
+
+
+def test_artifact_gate_stays_quiet_when_the_deliverable_is_not_a_diff(tmp_path: Path):
+    """A task whose object is git history must not be told to write source code."""
+    from dataclasses import replace
+
+    genome = default_genome("gate").derive(
+        "gate", mutation="artifact_gate=True", artifact_gate=True, max_steps=10
+    )
+    submit = ToolCall(id="s1", name="submit", arguments_raw="{}", arguments={"summary": "ok"})
+    responses = [_reply("", [_bash_call(f"echo {i}", f"c{i}")]) for i in range(4)]
+    responses.append(_reply("", [submit]))
+    # the worktree looks untouched, but this task is graded on container state
+    sandbox = _StubSandbox(status_output="")
+    client = _ScriptedClient(responses)
+    loop = AgentLoop(client, deadline_s=600.0)
+    task = replace(_task(tmp_path), collect_cmd=None)
+    episode = loop.run(task, sandbox, genome)
+    assert episode.artifact_warnings == 0
+    assert not [c for c in sandbox.commands if "git status" in c], (
+        "the gate should not even query a task that is not graded on a diff"
+    )
