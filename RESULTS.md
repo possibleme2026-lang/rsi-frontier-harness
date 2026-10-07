@@ -36,6 +36,44 @@ Every one of the frozen suite's thirty tasks was run. The genome is `gen1` — t
 harness as designed, before any evolution — with its 60-step loop and its two protocol
 paths.
 
+### Where the two sides of this table come from
+
+They do **not** come from the same place, and the difference is large enough that the
+table has to be read as two separate measurements:
+
+| | this harness | the published harnesses |
+| --- | --- | --- |
+| who ran it | this repository, in this session | the benchmark authors |
+| where the numbers live | `runs/*/trials/*/trial.json` | `_ref-frontier-eval/results/eval-data.json` |
+| model | `DeepSeek-V4.1-Flash` | **Kimi K3** (every configuration) |
+| runtime | Docker Desktop on Windows, default bridge | a Runta runtime with a runtime-wide egress allowlist |
+| price basis | the tierflow rate card, `genomes/pricing.json` | the eval's own `pricing.json` |
+| verifiers | terminal-bench-2 main; deep-swe corpus 1.3 collect hook | the gated published set |
+| DeepSWE agent budget | capped locally at 1500–2100 s | the declared 5400 s |
+
+**The published harnesses were not re-run here and cannot be.** The eval repository ships
+its results, task definitions and workflow, and states that "internal infrastructure,
+credentials, runtime identifiers, private evidence, solutions, and deployment
+configuration are not included" — the twelve configurations are not executable artifacts
+in the clone. `tools/published_provenance.py` prints exactly what the file contains:
+
+```
+file          : _ref-frontier-eval/results/eval-data.json
+generated_at  : 2026-08-22T16:04:57.538734+00:00
+model field   : k3
+overview.checkpoint_tasks                 30
+overview.expected_cells                   360
+overview.completed_cells                  360
+overview.harness_configurations           12
+```
+
+So the pass-rate column is *their harness on their model* against *this harness on this
+model*. It is a like-for-like comparison of **tasks, verifier contracts and per-task
+outcomes**, and it is **not** a controlled comparison of harnesses. Anyone reading the
+cost column should read it as "what an operator pays per solved task, on each side's own
+model and own prices". The price-independent evidence that this harness is frugal is the
+token profile, which is provider-reported on both sides and is in §4.
+
 | | RSIH `gen1` | codex | dsh-creator | pi-responses | dsh-standard | exo | claude-code |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | passes | **18/30** | 20/30 | 19/30 | 18/30 | 18/30 | 16/30 | 19/30 |

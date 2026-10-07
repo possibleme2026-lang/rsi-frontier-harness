@@ -86,7 +86,19 @@ which is how a pass that does not reproduce gets found rather than averaged away
 & $py tools/baseline_family.py all
 & $py tools/baseline_matrix.py --run runs/gen0-probe-g0-gen0
 & $py tools/deepswe_table.py runs/deepswe-9
+& $py tools/published_provenance.py     # what the baseline file actually contains
 ```
+
+## 5b. What was measured here and what was not
+
+Only the `rsih` rows in any table are measurements from this repository. The published
+harness rows are read from `_ref-frontier-eval/results/eval-data.json`, which is the
+benchmark authors' own result file: they ran Kimi K3 through twelve configurations on a
+Runta runtime, and the configurations themselves are not part of the clone ("internal
+infrastructure, credentials, runtime identifiers, private evidence, solutions, and
+deployment configuration are not included"). They were **not re-run here and cannot be**.
+`tools/published_provenance.py` prints the file's `generated_at`, its model field and its
+per-harness cell/pass/cost totals so the provenance can be checked rather than trusted.
 
 ## 6. Rate limits
 
