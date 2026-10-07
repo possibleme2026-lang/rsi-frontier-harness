@@ -620,7 +620,37 @@ kept investigating. That is a limit of the mechanism as written and it is the ho
 boundary of the `expr` result: the gate converts a cell that was *nearly* ready to act, and
 does not by itself rescue a cell where the agent has not understood the change yet.
 
-### 5.4 The same bundle over the terminal half — where it loses
+### 5.4 The two wins do not replicate, and that is the important part
+
+Both of the cells `gen7` converted were run again later, under configurations that keep the
+artifact gate:
+
+| cell | `gen1` | `gen7` | `gen12` (gate, no blocks) | `gen14` (gate + conformance) | passes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| expr-try-catch-errors | fail | **pass** | fail | fail (41 steps) | **1 of 4** |
+| httpx-multipart-response-parsing | 121/122 | **pass** | — | fail (100 steps) | **1 of 5** (121/122 three further times) |
+
+`httpx` in particular was one test short in four separate configurations before `gen7`, and
+one short again in `gen14`. A single passing run is not evidence that it was fixed, and the
+same is true of `expr`. **The `+38.6%` credit figure in §5.3 should therefore be read as a
+provisional measurement over nine cells with one run each, not as nine established results**
+— which is what `tools/noise_floor.py` was written to say, and which the replication then
+confirmed the hard way.
+
+What survives is narrower and better supported:
+
+- **The failure diagnosis.** Five of seven repository failures never edited the deliverable,
+  and that is a census over every stored run, not a single comparison.
+- **The gate fires where it should and nowhere else**: 9 of 9 repository cells, 0 of 20
+  terminal cells.
+- **The gate is not sufficient.** `meriyah` read it four times and still submitted nothing.
+- **The output cap is harmful.** Two independent attempts (with and without recovery) both
+  lost cells, and the second showed the cap was not even binding — `expr` burned 60 steps
+  producing 336 bytes at 52–283 completion tokens per step.
+
+A negative replication is a result. It is also the reason this report does not adopt `gen7`.
+
+### 5.5 The same bundle over the terminal half — where it loses
 
 The repository half is nine of thirty cells, so §5.3 cannot say whether `gen7` is a better
 harness. It was then run on all 21 terminal-bench cells (`runs/gen7-tb`).
