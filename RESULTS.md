@@ -207,7 +207,7 @@ it fails the same way almost every time: the agent decides the right fix for "se
 in this repo" is to rewrite history with `git filter-branch`, then `git reflog expire` and
 `git gc --prune=now`, which destroys the commit the verifier's
 `test_no_other_files_changed` needs. Five of its seven failures are that one mistake. A
-conservative reading of the headline is therefore **17/30 = 56.7%**, and §7 says so rather
+conservative reading of the headline is therefore **17/30 = 56.7%**, and §8 says so rather
 than quietly keeping the flattering number. The rows below it are a different phenomenon —
 they are *configuration*-sensitive, not flaky, which is why the report quotes one genome
 per number and A/Bs the rest with `tools/ab_runs.py`.
@@ -227,6 +227,51 @@ That is the claim this work supports, stated so it can be checked:
 - **The gap to the top is not a budget gap.** §2.1 spends 64 extra cell-runs proving it:
   three configurations with more steps and/or a verification block all landed at or below
   the 60-step harness, and the one that matched its score cost 20% more.
+
+### 2.3 The number that matters most: every run so far had a network it should not have
+
+This section is placed here rather than with the other mechanisms because it is not a
+mechanism. It is a defect in the measurement, and it was found last.
+
+All thirty tasks declare `allow_internet=False`. The sandbox did not read that field: it
+always started the container on the default bridge network, so the agent had unrestricted
+off-host access. The note in `sandbox.py` defended this as an unavoidable approximation of
+the published run's runtime-wide allowlist, which was wrong in the direction that matters —
+an allowlist admits package hosts, while a bridge admits everything.
+
+A census over every stored episode (`tools/network_census.py`) says what was done with it:
+
+| what the network command was aimed at | episodes | commands |
+| --- | ---: | ---: |
+| upstream fix or upstream history (`github.com`, `raw.githubusercontent.com`) | **45** | 555 |
+| package install | 44 | 145 |
+| unclassified off-host use | 55 | 272 |
+| the benchmark's own repository, including a hidden `test.patch` | 13 commands | 13 |
+| **any of the above** | **144 of 266 episodes (54.1%)** | |
+
+Three episodes from the failure census are the same episode seen twice. `arktype` spent its
+final steps `git grep`-ing three thousand commits of an upstream clone and finished with
+**zero** writes inside the repository. `python-statemachine` downloaded the hidden
+`test.patch` for its own task from the benchmark's public GitHub repository, and separately
+fetched another team's published results. `meriyah` fetched the upstream fix commit by hash.
+
+Two conclusions follow, and both are uncomfortable:
+
+1. **Every cell-level number in this report was measured under a policy the benchmark does
+   not specify.** The cells that pass most reliably are also the ones that used the network
+   most — `kv-store-grpc` (18 episodes), `largest-eigenval` (16), `merge-diff-arc-agi-task`
+   (16) — so the direction of the error is not knowable from the data that exists. It could
+   have inflated the score, and blocking it could cost cells rather than gain them.
+2. **It is a real budget sink.** Where the agent has no route out, it has to implement.
+
+The agent phase now runs on a Docker network created with `--internal` and has no route off
+the host; the verifier phase attaches the same container to the bridge, because
+`tests/test.sh` installs `uv` and `pytest`. `tools/network_probe.py` asserts both halves
+against observed connectivity rather than the flags passed to `docker` — the agent phase
+fails DNS with `gaierror`, the verifier phase reaches `github.com`. `runs/gen1-netiso`
+re-measures all thirty cells under the corrected policy, and until it reports, the honest
+statement is that the previous 18/30 is a number obtained with an unintended capability
+available to the agent.
 
 ## 3. Baseline sweep — genome `gen0`, 14 terminal-bench tasks
 
@@ -534,6 +579,17 @@ step, so its artifact is empty by construction. Only the repository half can be 
 way, and only that half is counted above. The harness's artifact gate makes the same
 distinction at runtime, and stays silent on a task that is not graded on a diff.
 
+**What those five were doing instead** turned out to be the most useful thing in the
+section, and it was only visible after reading the episodes rather than the artifact sizes.
+`arktype` finished with zero writes inside the repository, having spent its last steps
+`git grep`-ing three thousand commits of an upstream clone. `python-statemachine` downloaded
+the hidden `test.patch` for its own task. `meriyah` fetched the upstream fix commit by hash.
+Reading the episode's own `steps` was necessary to see this: the loop compacts its message
+list, so counting tool calls from `messages` reported 29 where the episode had made 131, and
+the first version of `tools/episode_commands.py` did exactly that and reported the wrong
+number with confidence. See §2.3 — the network those commands reached should not have been
+available, and half of every episode in the repository used it.
+
 ### 5.2 The binary verdict was hiding six near misses
 
 Every repository suite reports how far a patch got, and the harness has been keeping that
@@ -548,7 +604,7 @@ four of them with the existing suite fully green.
 | fastapi (`gen6`) | 129 / 137 | 1.000 | a failure |
 | scc | 26 / 31 | 0.983 | a failure |
 
-This matters for the evolution loop more than for the report, and §6.1 changes the loop
+This matters for the evolution loop more than for the report, and §7.1 changes the loop
 accordingly: a gate that only sees pass or fail cannot distinguish "wrote nothing" from
 "wrote almost all of it", so on a six-task evolve split it could essentially only ever
 adopt cost improvements.
@@ -712,9 +768,7 @@ What the session did produce is worth stating plainly, because it is not nothing
   each of which would otherwise have been shipped as an improvement on the strength of the
   cell it happened to win.
 
-## 6. Evolution
-
-### 5.6 The same bundle over the terminal half — where it loses
+## 6. The same bundle over the terminal half — where it loses
 
 The repository half is nine of thirty cells, so §5.3 cannot say whether `gen7` is a better
 harness. It was then run on all 21 terminal-bench cells (`runs/gen7-tb`).
@@ -759,7 +813,7 @@ never edited the deliverable) stands, the gate is the measured fix for it, and t
 to be applied *without* the general-purpose prompting that came bundled with it — which is
 the configuration §5.5 measures.
 
-## 6. Evolution
+## 7. Evolution
 
 The loop (`rsih evolve`) proposes descriptor mutations and free-text prompt rules,
 evaluates each child on the evolve set, and accepts only what clears a significance
@@ -939,7 +993,7 @@ argument for the parts of the harness that have nothing to do with the model: th
 per-trial artifacts, the replayable rule, and a holdout the loop cannot see.
 
 
-## 7. What this does not show
+## 8. What this does not show
 
 - **It is not a leaderboard entry.** The model is not the baselines' Kimi K3, the
   verifiers are TB2 main rather than the gated 2.1 tag, containers run on a bridge
@@ -951,7 +1005,7 @@ per-trial artifacts, the replayable rule, and a holdout the loop cannot see.
   claim, which is measured directly, and the coverage claim, which is a fact about what
   ran.
 - **The evolve set is small on purpose, and that caps what evolution can prove.** See
-  §6: the gate needs five net flips, so a six-cell evolve set can only ever move spend.
+  §7: the gate needs five net flips, so a six-cell evolve set can only ever move spend.
   Self-improvement of *capability* is not demonstrated here; self-improvement of spend
   is, and the holdout shows even that was over-credited.
 - **A perfectly good child can be rejected.** In run `rsi-g1`, `loop.compaction=summarize`

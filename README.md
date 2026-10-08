@@ -41,7 +41,7 @@ an unusually warm cache.
 Same pass rate as the best published harnesses, and the cheapest measured configuration on
 this suite by an order of magnitude — inside the published band rather than above it. The
 claim is the efficiency frontier, not a higher score. The self-improvement loop's one
-measured change and the holdout that overruled it are in §6 of `RESULTS.md`; the parts of
+measured change and the holdout that overruled it are in §7 of `RESULTS.md`; the parts of
 that story that are negative are reported with the same prominence as the parts that are
 not.
 
@@ -143,7 +143,7 @@ cell*, and only if the paired per-task spend difference clears `z` standard erro
 itself. A harness cannot become cheap by failing to record its usage, and it cannot
 become cheap by getting lucky on the one expensive task: that second rule was added
 after a measured run showed the point-ratio version adopting a change the holdout
-reproduced at half the size. [`RESULTS.md`](RESULTS.md) §6 has the numbers, and
+reproduced at half the size. [`RESULTS.md`](RESULTS.md) §7 has the numbers, and
 `tools/replay_gate.py` re-decides an old ledger under the new rule from its own trials.
 
 **The loop never sees the holdout.** The runnable suite is split deterministically by
