@@ -24,7 +24,7 @@ from . import prompts
 ALL_TOOLS = ("bash", "read_file", "write_file", "submit")
 
 COMPACTION_MODES = ("none", "truncate", "summarize")
-SUBMIT_GUARDS = ("none", "one_shot_reject")
+SUBMIT_GUARDS = ("none", "one_shot_reject", "artifact_required")
 
 #: The step-budget policy below is expressed relative to a declared agent budget. The
 #: default reference is the *largest* budget any terminal-bench task in the frozen suite

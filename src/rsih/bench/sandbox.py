@@ -6,11 +6,13 @@ avoids every shell-quoting hazard: the agent may put newlines, quotes and unicod
 in a command and the bytes that reach the container are exactly the bytes the
 model emitted.
 
-Network policy: the FrontierHarness run applied a runtime-wide allowlist that
-also admitted the package hosts its verifiers need.  Locally we start the
-container on the default bridge network so that ``tests/test.sh`` (which installs
-``uv`` and ``pytest``) can run at all; this deviation is recorded in every trial
-record rather than being left implicit.
+Network policy: every task in this benchmark declares ``allow_internet=False``, so the
+agent phase runs on a Docker network created with ``--internal`` and the container has no
+route off the host.  Without that the agent can reach github.com, which some agents used to
+fetch the upstream fix commit or the repository's own future history -- and, in one measured
+episode, the hidden ``test.patch`` from the benchmark's public repository.  The verifier
+phase then attaches the same container to the bridge network, because ``tests/test.sh``
+installs ``uv`` and ``pytest`` and cannot run otherwise.
 """
 
 from __future__ import annotations
@@ -25,6 +27,9 @@ from .tasks import Task
 
 CWD_SENTINEL = "<<<RSIH_CWD>>>"
 EXIT_SENTINEL = "<<<RSIH_EXIT>>>"
+#: Docker network the agent phase runs on.  Created with ``--internal`` so it routes
+#: nowhere; the verifier phase connects the container to the bridge instead.
+INTERNAL_NETWORK = "rsih-agent-isolated"
 
 
 class SandboxError(RuntimeError):
@@ -74,19 +79,27 @@ class DockerSandbox:
         workdir: str | None = None,
         network: str = "bridge",
         container_engine: str = "docker",
+        isolate: bool = True,
     ):
         self.task = task
         self.name = name
         self.workdir = workdir or task.workdir
         self.network = network
         self.engine = container_engine
+        self.isolate = isolate
         self._has_timeout: bool | None = None
         self.started_at: float | None = None
+        self._isolated = False
+        #: Set when the container was started without external connectivity, so that the
+        #: verifier phase can be given a route out again.
         self.network_policy_note = (
-            "container started on the default bridge network; the task metadata declares "
-            f"allow_internet={task.allow_internet}. The published run applied a runtime-wide "
-            "allowlist that also admitted verifier package hosts, which cannot be reproduced "
-            "exactly with a local Docker bridge."
+            "the agent phase runs on a Docker network created with --internal, so the "
+            "container has no route off the host; the verifier phase connects the same "
+            "container to the bridge network, because tests/test.sh installs packages. "
+            f"The task metadata declares allow_internet={task.allow_internet}. This is "
+            "stricter than the published run, which applied a runtime-wide allowlist that "
+            "admitted verifier package hosts and could not be reproduced with a local "
+            "Docker bridge."
         )
 
     # -------------------------------------------------------------- lifecycle
@@ -98,6 +111,28 @@ class DockerSandbox:
     def start(self) -> None:
         if self.exists():
             self.remove()
+        # The agent phase gets an --internal network: no route off the host, which is what
+        # every task in this benchmark declares. Without it the agent can fetch the upstream
+        # fix commit, the repository's own future history, and -- in one measured episode --
+        # the hidden test.patch from the benchmark's public GitHub repository. Three of the
+        # seven graded repository failures spent their whole budget on exactly that instead
+        # of implementing the change.
+        if self.network == "bridge" and self.isolate:
+            _run(
+                [
+                    self.engine,
+                    "network",
+                    "create",
+                    "--internal",
+                    INTERNAL_NETWORK,
+                ],
+                timeout=120,
+            )
+            start_network = INTERNAL_NETWORK
+            self._isolated = True
+        else:
+            start_network = self.network
+            self._isolated = False
         argv = [
             self.engine,
             "run",
@@ -111,7 +146,7 @@ class DockerSandbox:
             "--memory-swap",
             f"{self.task.memory_mb}m",
             "--network",
-            self.network,
+            start_network,
             "-w",
             self.workdir,
         ]
@@ -124,6 +159,23 @@ class DockerSandbox:
         self.started_at = time.time()
         probe = self._exec_raw("command -v timeout >/dev/null 2>&1 && echo yes || echo no", timeout_s=60)
         self._has_timeout = probe.output.strip().endswith("yes")
+
+    def open_network(self) -> None:
+        """Give the container a route off the host, for the verifier phase.
+
+        `tests/test.sh` installs dependencies, so the verifier needs the network that the
+        agent was denied. Docker cannot change a running container's network, but it can
+        attach a second one, which is enough: the bridge becomes the default route.
+        """
+        if not self._isolated:
+            return
+        _run([self.engine, "network", "connect", "bridge", self.name], timeout=120)
+
+    def close_network(self) -> None:
+        """Drop the route again, so a later phase cannot use it."""
+        if not self._isolated:
+            return
+        _run([self.engine, "network", "disconnect", "bridge", self.name], timeout=120)
 
     def remove(self, *, force: bool = True) -> None:
         argv = [self.engine, "rm", "-f", self.name] if force else [self.engine, "rm", self.name]

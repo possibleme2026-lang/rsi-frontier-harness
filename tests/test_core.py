@@ -775,3 +775,85 @@ def test_a_default_off_knob_does_not_change_an_existing_identity():
     # the identity is therefore a function of the set fields alone, not of the schema
     assert seed.fingerprint() == before
     assert seed.behaviour() == delta_before
+
+
+# ------------------------------------------- refusing a submit that is a certain zero
+#
+# Three of seven repository failures submitted an empty diff and two more submitted only
+# their own scratch files.  An empty submit on a diff-graded task scores zero by
+# construction, so refusing it costs nothing and returns a turn.  These tests hold the guard
+# to that and to its two safety properties: it must not fire when the product *was* changed,
+# and it must give up rather than trap an agent that cannot do the task.
+
+
+def _submit(summary: str = "done", call_id: str = "s") -> ToolCall:
+    return ToolCall(id=call_id, name="submit", arguments_raw="{}", arguments={"summary": summary})
+
+
+def _guarded(max_steps: int = 10):
+    return default_genome("guard").derive(
+        "guard",
+        mutation="submit_guard=artifact_required",
+        submit_guard="artifact_required",
+        max_steps=max_steps,
+    )
+
+
+def test_an_empty_submit_is_refused_and_the_episode_continues(tmp_path: Path):
+    # the worktree is untouched, so the diff the grader would score is empty
+    sandbox = _StubSandbox(status_output="")
+    responses = [
+        _reply("", [_submit("all done", "s1")]),  # refused
+        _reply("", [_bash_call("write the fix", "c1")]),  # a real turn happens after
+        _reply("", [_submit("done now", "s2")]),  # refused again
+        _reply("", [_submit("done", "s3")]),  # limit reached, accepted
+    ]
+    episode = AgentLoop(_ScriptedClient(responses), deadline_s=600.0).run(_task(tmp_path), sandbox, _guarded())
+    assert episode.empty_artifact_rejections == 2, "bounded, not an infinite loop"
+    assert episode.exit_reason == "submitted"
+    assert episode.turns == 4, "the refused submits did not end the episode"
+    assert "cd /app" not in sandbox.commands[0]
+
+
+def test_a_submit_is_accepted_once_a_product_file_changed(tmp_path: Path):
+    sandbox = _StubSandbox(status_output=" M httpx/_models.py\n?? scratch/t1.py\n")
+    responses = [_reply("", [_submit("fixed it", "s1")])]
+    episode = AgentLoop(_ScriptedClient(responses), deadline_s=600.0).run(_task(tmp_path), sandbox, _guarded())
+    assert episode.empty_artifact_rejections == 0
+    assert episode.exit_reason == "submitted"
+    assert episode.turns == 1
+
+
+def test_scratch_only_work_does_not_satisfy_the_guard(tmp_path: Path):
+    """The measured failure mode: a diff that exists but contains nothing graded."""
+    sandbox = _StubSandbox(status_output="?? scratch/t1.ts\n?? scratch/t2.ts\n")
+    responses = [
+        _reply("", [_submit("done", "s1")]),
+        _reply("", [_submit("done", "s2")]),
+        _reply("", [_submit("done", "s3")]),
+    ]
+    episode = AgentLoop(_ScriptedClient(responses), deadline_s=600.0).run(_task(tmp_path), sandbox, _guarded())
+    assert episode.empty_artifact_rejections == 2
+
+
+def test_the_guard_is_off_unless_the_genome_asks_for_it(tmp_path: Path):
+    sandbox = _StubSandbox(status_output="")
+    responses = [_reply("", [_submit("done", "s1")])]
+    episode = AgentLoop(_ScriptedClient(responses), deadline_s=600.0).run(
+        _task(tmp_path), sandbox, default_genome("plain").derive("plain", mutation="noop")
+    )
+    assert episode.empty_artifact_rejections == 0
+    assert episode.turns == 1
+
+
+def test_the_guard_does_not_fire_when_the_deliverable_is_not_a_diff(tmp_path: Path):
+    """A task graded on container state has no diff to be empty, so the guard is silent."""
+    from dataclasses import replace
+
+    sandbox = _StubSandbox(status_output="")
+    responses = [_reply("", [_submit("done", "s1")])]
+    episode = AgentLoop(_ScriptedClient(responses), deadline_s=600.0).run(
+        replace(_task(tmp_path), collect_cmd=None), sandbox, _guarded()
+    )
+    assert episode.empty_artifact_rejections == 0
+    assert episode.exit_reason == "submitted"

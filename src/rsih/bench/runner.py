@@ -404,10 +404,18 @@ class TrialRunner:
                     task,
                     name=f"rsih-vfy-{_slug(self.run_id)}-{_slug(task.name)}{suffix}"[:60],
                     network=self.network,
+                    # The verifier installs packages, so it is the one phase that needs a
+                    # route out; the agent phase ran without one.
+                    isolate=False,
                 )
                 verifier_sandbox.start()
                 if submitted is not None:
                     verifier_sandbox.write_text(task.collect_path, submitted)
+            else:
+                # A terminal-bench verifier grades this container in place and its test.sh
+                # installs dependencies, so hand the agent's container the network now that
+                # the agent has stopped.
+                sandbox.open_network()
             try:
                 verifier_sandbox.exec_script("mkdir -p /logs/verifier && rm -rf /tests", timeout_s=60)
                 verifier_sandbox.copy_tree(Path(task.tests_dir), "/tests")

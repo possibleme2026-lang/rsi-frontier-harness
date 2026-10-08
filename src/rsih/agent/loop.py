@@ -34,6 +34,23 @@ SUBMIT_GUARD_TEXT = (
     "Submit rejected once: before finishing you must run the check the task implies "
     "and read its actual output. Do that now, then call submit again."
 )
+#: Shown when the agent tries to finish a diff-graded task without having changed a single
+#: product file. The grader scores the diff, so this submit is a guaranteed zero: there is
+#: nothing to lose by refusing it and one turn to gain. Measured, not assumed -- three of
+#: seven repository failures submitted an empty diff and two more submitted only their own
+#: scratch files, and both `meriyah` and `katex` read the softer artifact-gate notice four
+#: times and submitted nothing anyway.
+EMPTY_ARTIFACT_TEXT = (
+    "Submit rejected: the graded artifact is a diff of this repository and yours is empty "
+    "of any product file. Scratch files, notes and probe scripts are not graded. You will "
+    "score zero for this submission. Write the change you believe is most likely correct "
+    "into the product source now -- a partial implementation that compiles is worth more "
+    "than a perfect plan -- then submit."
+)
+#: How many times an empty submit may be refused before it is accepted anyway. One refusal
+#: recovers an agent that had not realised the diff was the deliverable; several would trap
+#: an agent that genuinely cannot do the task into burning its remaining steps.
+EMPTY_ARTIFACT_REJECTION_LIMIT = 2
 #: Appended when the provider stopped the response because it hit the output limit. A
 #: reasoning model that is cut off mid-thought can spend a whole turn producing neither
 #: prose nor a tool call, which without this message is indistinguishable from the model
@@ -103,6 +120,10 @@ class Episode:
     model_retries: int = 0
     truncation_recoveries: int = 0
     artifact_warnings: int = 0
+    #: Submits refused because the graded diff contained no product file. Counted apart from
+    #: `submit_rejections` so a run can say whether the guard fired on evidence of an empty
+    #: artifact rather than as an unconditional first-submit penalty.
+    empty_artifact_rejections: int = 0
     error: str | None = None
     messages: list[dict[str, Any]] = field(default_factory=list)
 
@@ -129,6 +150,7 @@ class Episode:
             "model_retries": self.model_retries,
             "truncation_recoveries": self.truncation_recoveries,
             "artifact_warnings": self.artifact_warnings,
+            "empty_artifact_rejections": self.empty_artifact_rejections,
             "error": self.error,
             "ledger": self.ledger.as_dict() if self.ledger else None,
             "steps": [s.as_dict() for s in self.steps],
@@ -322,6 +344,7 @@ class AgentLoop:
         schemas = tool_lib.schemas(genome.tools)
         nudges_left = genome.nudge_text_only
         submit_rejected = False
+        empty_artifact_rejections = 0
         loop_started = time.time()
 
         for step_index in range(step_cap):
@@ -447,6 +470,26 @@ class AgentLoop:
                     episode.submit_rejections += 1
                     messages.append(
                         {"role": "tool", "tool_call_id": call.id, "content": SUBMIT_GUARD_TEXT}
+                    )
+                    continue
+                if (
+                    call.name == "submit"
+                    and genome.submit_guard == "artifact_required"
+                    and diff_graded
+                    and empty_artifact_rejections < EMPTY_ARTIFACT_REJECTION_LIMIT
+                    and step_cap - step_index - 1 > 0
+                    and not _product_touched(sandbox, task, genome)
+                ):
+                    # A refusal here is free: the grader scores the diff, an empty diff is a
+                    # certain zero, and the agent still has steps left to spend. Bounded so
+                    # that an agent which genuinely cannot do the task is not trapped in a
+                    # loop it cannot exit -- after the limit the submit is accepted and the
+                    # episode ends with whatever it has.
+                    empty_artifact_rejections += 1
+                    episode.submit_rejections += 1
+                    episode.empty_artifact_rejections += 1
+                    messages.append(
+                        {"role": "tool", "tool_call_id": call.id, "content": EMPTY_ARTIFACT_TEXT}
                     )
                     continue
                 if call.name == "submit":
