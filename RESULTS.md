@@ -279,10 +279,16 @@ The agent phase now runs on a Docker network created with `--internal` and has n
 the host; the verifier phase attaches the same container to the bridge, because
 `tests/test.sh` installs `uv` and `pytest`. `tools/network_probe.py` asserts both halves
 against observed connectivity rather than the flags passed to `docker` — the agent phase
-fails DNS with `gaierror`, the verifier phase reaches `github.com`. `runs/gen1-netiso`
-re-measures all thirty cells under the corrected policy, and until it reports, the honest
-statement is that the previous 18/30 is a number obtained with an unintended capability
-available to the agent.
+fails DNS with `gaierror`, the verifier phase reaches `github.com`. That change carries a
+risk worth stating: a terminal-bench verifier grades the agent's own container in place, so
+if handing the container a route after the agent stops did not work, every terminal cell
+would become an infra failure. Two cells were run to check it before the full suite —
+`log-summary-date-ranges` passes in 108 s and `vulnerable-secret` in 258 s, both with their
+verifiers reaching a real verdict.
+
+`runs/gen1-netiso` re-measures all thirty cells under the corrected policy, and until it
+reports, the honest statement is that the previous 18/30 is a number obtained with an
+unintended capability available to the agent.
 
 ## 3. Baseline sweep — genome `gen0`, 14 terminal-bench tasks
 
