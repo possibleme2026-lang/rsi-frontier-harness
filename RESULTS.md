@@ -249,6 +249,17 @@ A census over every stored episode (`tools/network_census.py`) says what was don
 | the benchmark's own repository, including a hidden `test.patch` | 13 commands | 13 |
 | **any of the above** | **144 of 266 episodes (54.1%)** | |
 
+Those counts can be believed because the same tool is able to say how often a network command
+was *refused*: across all 268 stored episodes, only **4** commands contain any refusal text at
+all — `Could not resolve host`, `Network is unreachable`, a failure exit code. Everything else
+either succeeded or left no evidence of failure. Once the policy changed, the same tool on the
+isolated run finds explicit refusals within the first episodes (`fatal: unable to access
+'https://github.com/expr-lang/expr.git/': Could not resolve host: github.com`). One caveat the
+tool reports about itself: `curl -s` prints nothing at all when it fails, so an episode whose
+only network command was a silent curl leaves no evidence either way, and those are counted as
+attempts rather than successes. The direct evidence that the agent phase has no route is
+`tools/network_probe.py`, which opens a socket and reports what actually happened.
+
 Three episodes from the failure census are the same episode seen twice. `arktype` spent its
 final steps `git grep`-ing three thousand commits of an upstream clone and finished with
 **zero** writes inside the repository. `python-statemachine` downloaded the hidden
@@ -589,6 +600,28 @@ list, so counting tool calls from `messages` reported 29 where the episode had m
 the first version of `tools/episode_commands.py` did exactly that and reported the wrong
 number with confidence. See §2.3 — the network those commands reached should not have been
 available, and half of every episode in the repository used it.
+
+**A fix that the census then refused.** The natural reading of "three submitted nothing" is
+that the agent chose to submit an empty diff, and the harness can refuse that for free: the
+grader scores the diff, so an empty diff is a certain zero, and returning a turn costs
+nothing. That guard was written (`submit_guard = "artifact_required"`, bounded at two
+refusals) before `tools/guard_targets.py` was run to check it, and the check says not to
+expect anything from it:
+
+| repository trials | |
+| --- | ---: |
+| scored | 58 |
+| where the agent called `submit` itself | 10 |
+| **of those, with an empty artifact** | **0** |
+| ended by the budget with an empty artifact | 14 |
+
+So the three zero-byte submissions were all **budget-terminated**, not the agent's choice:
+the harness auto-submits at the step limit, and a guard that speaks when the agent calls
+`submit` never gets to speak. The guard is kept — it is off by default, costs one comparison,
+and is correct for a failure that can occur — but it is a precaution, not the fix, and the
+census that says so is in the repository so the claim can be re-checked rather than believed.
+The failure it was written for needs the artifact to exist at all, which is the problem §2.3
+turned out to be about.
 
 ### 5.2 The binary verdict was hiding six near misses
 
