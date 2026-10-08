@@ -252,13 +252,39 @@ A census over every stored episode (`tools/network_census.py`) says what was don
 Those counts can be believed because the same tool is able to say how often a network command
 was *refused*: across all 268 stored episodes, only **4** commands contain any refusal text at
 all — `Could not resolve host`, `Network is unreachable`, a failure exit code. Everything else
-either succeeded or left no evidence of failure. Once the policy changed, the same tool on the
-isolated run finds explicit refusals within the first episodes (`fatal: unable to access
-'https://github.com/expr-lang/expr.git/': Could not resolve host: github.com`). One caveat the
-tool reports about itself: `curl -s` prints nothing at all when it fails, so an episode whose
-only network command was a silent curl leaves no evidence either way, and those are counted as
-attempts rather than successes. The direct evidence that the agent phase has no route is
-`tools/network_probe.py`, which opens a socket and reports what actually happened.
+either succeeded or left no evidence of failure. `tools/network_probe.py` is the direct
+evidence that the route is now gone, opening a socket rather than inspecting flags.
+
+**How much of the reported score this touches.** `tools/pass_network_accounting.py` counts
+the stored trials that ended in `success` and checks whether that same episode also ran a
+command that can leave the host:
+
+| | |
+| --- | ---: |
+| successful trials stored | 162 |
+| never ran a network command — evidence about the harness | **94** |
+| ran one — evidence about the harness *plus* the network | **68 (42%)** |
+| of those 68, with any refusal visible | **0** |
+
+So **42% of every pass in this repository was obtained with off-host access available.** That
+does not mean all 68 depended on it, and the tool is explicit about the difference rather than
+lumping them together. But the two are not academic:
+
+- `terminal-bench/kv-store-grpc` has **16 passing runs and every one of them used the
+  network**; `merge-diff-arc-agi-task` is the same, 16 of 16.
+- The two repository cells `gen1` was credited with passing had both fetched their upstream:
+  `anko` ran `git clone https://github.com/mattn/anko` followed by `git fetch --unshallow`
+  (1,147 commits) and a GitHub issue search, and `gen14`'s passing run downloaded **seven
+  upstream releases** (v0.1.9 through v0.1.15) from `proxy.golang.org`.
+- Under the corrected policy, `anko` and `fastapi` both fail, and the isolated runs show why:
+  `curl https://proxy.golang.org/github.com/mattn/anko/@v/list` now returns `000 | exit=6`,
+  and `pypi.org` is likewise refused.
+
+Twelve tasks have at least one network-free pass, and that subset is the only part of the
+repository's history that can be read as evidence about the harness. The rest needs the
+re-measurement, and `runs/gen1-netiso` is it. Until that reports, the previously stated
+18/30 is a number obtained partly by an agent that was downloading the answer, and the honest
+headline is that **the pass-rate result is not yet known.**
 
 Three episodes from the failure census are the same episode seen twice. `arktype` spent its
 final steps `git grep`-ing three thousand commits of an upstream clone and finished with
